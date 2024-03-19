@@ -406,7 +406,8 @@ module FatesHistoryInterfaceMod
   integer :: ih_fire_fuel_mef_si
   integer :: ih_sum_fuel_si
   integer :: ih_fragmentation_scaler_sl
-
+  integer :: ih_fire_emission_height_si
+  
   integer :: ih_nplant_si_scpf
   integer :: ih_gpp_si_scpf
   integer :: ih_npp_totl_si_scpf
@@ -666,6 +667,9 @@ module FatesHistoryInterfaceMod
   integer :: ih_burnt_frac_litter_si_fuel
   integer :: ih_fuel_amount_si_fuel
 
+  ! indices to (site x emissions) variables
+  integer :: ih_fire_emissions_si_emis
+
   ! indices to (site x cwd size class) variables
   integer :: ih_cwd_ag_si_cwdsc
   integer :: ih_cwd_bg_si_cwdsc
@@ -761,7 +765,8 @@ module FatesHistoryInterfaceMod
      integer, private :: levscls_index_, levpft_index_, levage_index_
      integer, private :: levfuel_index_, levcwdsc_index_, levscag_index_
      integer, private :: levcan_index_, levcnlf_index_, levcnlfpft_index_
-     integer, private :: levcdpf_index_, levcdsc_index_, levcdam_index_ 
+     integer, private :: levcdpf_index_, levcdsc_index_, levcdam_index_
+     integer, private :: levemis_index_
      integer, private :: levscagpft_index_, levagepft_index_
      integer, private :: levheight_index_, levagefuel_index_
      integer, private :: levelem_index_, levelpft_index_
@@ -793,6 +798,7 @@ module FatesHistoryInterfaceMod
      procedure :: levcacls_index
      procedure :: levpft_index
      procedure :: levage_index
+     procedure :: levemis_index
      procedure :: levfuel_index
      procedure :: levcwdsc_index
      procedure :: levcan_index
@@ -828,6 +834,7 @@ module FatesHistoryInterfaceMod
      procedure, private :: set_levscls_index
      procedure, private :: set_levpft_index
      procedure, private :: set_levage_index
+     procedure, private :: set_levemis_index     
      procedure, private :: set_levfuel_index
      procedure, private :: set_levcwdsc_index
      procedure, private :: set_levcan_index
@@ -874,7 +881,7 @@ contains
 
     use FatesIODimensionsMod, only : column, levsoil, levscpf
     use FatesIODimensionsMod, only : levscls, levpft, levage
-    use FatesIODimensionsMod, only : levcacls, levcapf
+    use FatesIODimensionsMod, only : levcacls, levcapf, levemis
     use FatesIODimensionsMod, only : levfuel, levcwdsc, levscag
     use FatesIODimensionsMod, only : levscagpft, levagepft
     use FatesIODimensionsMod, only : levcan, levcnlf, levcnlfpft
@@ -933,6 +940,11 @@ contains
     call this%dim_bounds(dim_count)%Init(levage, num_threads, &
          fates_bounds%age_class_begin, fates_bounds%age_class_end)
 
+    dim_count = dim_count + 1
+    call this%set_levemis_index(dim_count)
+    call this%dim_bounds(dim_count)%Init(levemis, num_threads, &
+         fates_bounds%emis_class_begin, fates_bounds%emis_class_end)
+    
     dim_count = dim_count + 1
     call this%set_levfuel_index(dim_count)
     call this%dim_bounds(dim_count)%Init(levfuel, num_threads, &
@@ -1086,6 +1098,10 @@ contains
     call this%dim_bounds(index)%SetThreadBounds(thread_index, &
          thread_bounds%age_class_begin, thread_bounds%age_class_end)
 
+    index = this%levemis_index()
+    call this%dim_bounds(index)%SetThreadBounds(thread_index, &
+         thread_bounds%emis_class_begin, thread_bounds%emis_class_end)
+    
     index = this%levfuel_index()
     call this%dim_bounds(index)%SetThreadBounds(thread_index, &
          thread_bounds%fuel_begin, thread_bounds%fuel_end)
@@ -1177,7 +1193,7 @@ contains
 
     use FatesIOVariableKindMod, only : site_r8, site_soil_r8, site_size_pft_r8
     use FatesIOVariableKindMod, only : site_size_r8, site_pft_r8, site_age_r8
-    use FatesIOVariableKindMod, only : site_coage_r8, site_coage_pft_r8
+    use FatesIOVariableKindMod, only : site_coage_r8, site_coage_pft_r8, site_emis_r8
     use FatesIOVariableKindMod, only : site_fuel_r8, site_cwdsc_r8, site_scag_r8
     use FatesIOVariableKindMod, only : site_scagpft_r8, site_agepft_r8
     use FatesIOVariableKindMod, only : site_can_r8, site_cnlf_r8, site_cnlfpft_r8
@@ -1216,6 +1232,9 @@ contains
     call this%set_dim_indices(site_age_r8, 1, this%column_index())
     call this%set_dim_indices(site_age_r8, 2, this%levage_index())
 
+    call this%set_dim_indices(site_emis_r8, 1, this%column_index())
+    call this%set_dim_indices(site_emis_r8, 2, this%levemis_index())
+    
     call this%set_dim_indices(site_fuel_r8, 1, this%column_index())
     call this%set_dim_indices(site_fuel_r8, 2, this%levfuel_index())
 
@@ -1432,6 +1451,21 @@ end function levcapf_index
    class(fates_history_interface_type), intent(in) :: this
    levage_index = this%levage_index_
  end function levage_index
+ 
+! =======================================================================                               
+ subroutine set_levemis_index(this, index)
+   implicit none
+   class(fates_history_interface_type), intent(inout) :: this
+   integer, intent(in) :: index
+   this%levemis_index_ = index
+ end subroutine set_levemis_index
+
+ integer function levemis_index(this)
+   implicit none
+   class(fates_history_interface_type), intent(in) :: this
+   levemis_index = this%levemis_index_
+ end function levemis_index
+
 
  ! =======================================================================
  subroutine set_levfuel_index(this, index)
@@ -1875,7 +1909,7 @@ end subroutine flush_hvars
     ! ----------------------------------------------------------------------------------
     use FatesIOVariableKindMod, only : site_r8, site_soil_r8, site_size_pft_r8
     use FatesIOVariableKindMod, only : site_size_r8, site_pft_r8, site_age_r8
-    use FatesIOVariableKindMod, only : site_coage_r8, site_coage_pft_r8
+    use FatesIOVariableKindMod, only : site_coage_r8, site_coage_pft_r8, site_emis_r8
     use FatesIOVariableKindMod, only : site_fuel_r8, site_cwdsc_r8, site_scag_r8
     use FatesIOVariableKindMod, only : site_scagpft_r8, site_agepft_r8
     use FatesIOVariableKindMod, only : site_can_r8, site_cnlf_r8, site_cnlfpft_r8
@@ -1924,6 +1958,10 @@ end subroutine flush_hvars
     ! site x patch-age class
     index = index + 1
     call this%dim_kinds(index)%Init(site_age_r8, 2)
+    
+    ! site x patch-age class
+    index = index + 1
+    call this%dim_kinds(index)%Init(site_emis_r8, 2)
 
     ! site x fuel size class
     index = index + 1
@@ -2228,7 +2266,7 @@ end subroutine flush_hvars
     use FatesSizeAgeTypeIndicesMod, only : get_cdamagesize_class_index
     use FatesSizeAgeTypeIndicesMod, only : get_cdamagesizepft_class_index
     use FatesSizeAgeTypeIndicesMod, only : coagetype_class_index
-    
+    use EDParamsMod               , only : num_emission_compounds    
     use EDParamsMod               , only : nlevleaf
     use EDParamsMod               , only : ED_val_history_height_bin_edges
     use FatesInterfaceTypesMod    , only : nlevdamage
@@ -2258,6 +2296,7 @@ end subroutine flush_hvars
     integer  :: i_scpf,i_pft,i_scls     ! iterators for scpf, pft, and scls dims
     integer  :: i_cacls, i_capf      ! iterators for cohort age and cohort age x pft
     integer  :: i_cwd,i_fuel            ! iterators for cwd and fuel dims
+    integer  :: i_emis                  ! iterators for emissions class
     integer  :: iscag        ! size-class x age index
     integer  :: iscagpft     ! size-class x age x pft index
     integer  :: iagepft     ! age x pft index
@@ -2366,6 +2405,8 @@ end subroutine flush_hvars
                hio_fire_fuel_eff_moist_si => this%hvars(ih_fire_fuel_eff_moist_si)%r81d, &
                hio_fire_fuel_sav_si    => this%hvars(ih_fire_fuel_sav_si)%r81d, &
                hio_fire_fuel_mef_si    => this%hvars(ih_fire_fuel_mef_si)%r81d, &
+               hio_fire_emissions_si_em    => this%hvars(ih_fire_emissions_si_emis)%r82d, &
+               hio_fire_emission_height_si    => this%hvars(ih_fire_emission_height_si)%r81d, &
                hio_sum_fuel_si         => this%hvars(ih_sum_fuel_si)%r81d,  &
                hio_fragmentation_scaler_sl  => this%hvars(ih_fragmentation_scaler_sl)%r82d,  &
                hio_litter_in_si        => this%hvars(ih_litter_in_si)%r81d, &
@@ -3808,7 +3849,16 @@ end subroutine flush_hvars
                cpatch%burnt_frac_litter(i_fuel) * cpatch%frac_burnt * cpatch%area * AREA_INV
          end do
 
+         ! Update fire emissions variables
+         
+         do i_emis = 1,num_emission_compounds
+            hio_fire_emissions_si_em(io_si, i_emis) = hio_fire_emissions_si_em(io_si,i_emis) + &
+               cpatch%fire_emissions(i_emis) * cpatch%area * AREA_INV
+         enddo 
 
+         hio_fire_emission_height_si(io_si) = hio_fire_emission_height_si(io_si) + &
+            cpatch%fire_emission_height * cpatch%area * AREA_INV
+         
          hio_fire_intensity_area_product_si(io_si) = hio_fire_intensity_area_product_si(io_si) + &
             cpatch%FI * cpatch%frac_burnt * cpatch%area * AREA_INV * J_per_kJ
 
@@ -5351,7 +5401,7 @@ end subroutine update_history_hifrq
 
     use FatesIOVariableKindMod, only : site_r8, site_soil_r8, site_size_pft_r8
     use FatesIOVariableKindMod, only : site_size_r8, site_pft_r8, site_age_r8
-    use FatesIOVariableKindMod, only : site_coage_pft_r8, site_coage_r8
+    use FatesIOVariableKindMod, only : site_coage_pft_r8, site_coage_r8, site_emis_r8
     use FatesIOVariableKindMod, only : site_height_r8, site_agefuel_r8
     use FatesInterfaceTypesMod     , only : hlm_use_planthydro
 
@@ -5382,6 +5432,7 @@ end subroutine update_history_hifrq
     ! canopy layer             (site_can_r8)    : CL
     ! coarse woody debris size (site_cwdsc_r8)  : DC
     ! element                  (site_elem_r8)   : EL
+    ! fire  emissions class    (site_emis_r8)   : EM
     ! leaf layer                                : LL
     ! fuel class               (site_fuel_r8)   : FC
     ! height                   (site_height_r8) : HT
@@ -5925,6 +5976,19 @@ end subroutine update_history_hifrq
          hlms='CLM:ALM', upfreq=1, ivar=ivar, initialize=initialize_variables, &
          index = ih_burnt_frac_litter_si_fuel)
 
+    call this%set_history_var(vname='FATES_FIRE_EMISSIONS_EM', units='kg m-2 s-1',    &
+         long='Fire emissions per emissions compound. ', &
+         use_default='active', avgflag='A', vtype=site_emis_r8, hlms='CLM:ALM', &
+         upfreq=1, ivar=ivar, initialize=initialize_variables,                 &
+         index = ih_fire_emissions_si_emis)
+
+    call this%set_history_var(vname='FATES_FIRE_EMISSION_HEIGHT', units='m',    &
+         long='Fire emissions per emissions compound. ', &
+         use_default='active', avgflag='A', vtype=site_r8, hlms='CLM:ALM', &
+         upfreq=1, ivar=ivar, initialize=initialize_variables,                 &
+         index = ih_fire_emission_height_si)
+    
+    
     ! Litter Variables
 
     call this%set_history_var(vname='FATES_LITTER_IN', units='kg m-2 s-1',     &
