@@ -111,6 +111,7 @@ contains
        call crown_damage(currentSite)
        call cambial_damage_kill(currentSite)
        call post_fire_mortality(currentSite)
+       call fire_emissions(currentSite)
     end if
 
   end subroutine fire_model
@@ -1149,7 +1150,9 @@ contains
              enddo 
 
              currentPatch%fire_emission_height =  EDPftvarcon_inst%fire_emission_heights(currentPatch%nocomp_pft_label)
-
+             if(currentPatch%fire_emissions(c).gt.0.0_r8)then
+                write(*,*) 'postivie emissionssf',currentPatch%fire_emissions(1),biomass_burned
+             endif
              currentPatch => currentPatch%younger
           endif
        enddo !end patch loop
