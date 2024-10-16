@@ -755,7 +755,7 @@ module FatesPatchMod
         this%age_since_anthro_disturbance = fates_unset_r8
       endif
       this%nocomp_pft_label = nocomp_pft
-
+      
       this%tr_soil_dir(:) = 1.0_r8
       this%tr_soil_dif(:) = 1.0_r8
       this%NCL_p          = 1
