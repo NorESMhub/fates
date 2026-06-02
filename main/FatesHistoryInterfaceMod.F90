@@ -2440,7 +2440,7 @@ contains
     real(r8) :: fnrt_m_net_alloc   ! mass allocated to fine-root [kg/yr]
     real(r8) :: struct_m_net_alloc ! mass allocated to structure [kg/yr]
     real(r8) :: repro_m_net_alloc  ! mass allocated to reproduction [kg/yr]
-    real(r8) :: leaf_herbivory     ! mass of leaves eaten by herbivores [kg/yr]
+    real(r8) :: herbivory     ! mass of leaves eaten by herbivores [kg/yr]
     real(r8) :: n_perm2            ! abundance per m2
     real(r8) :: patch_fracarea  ! Fraction of area for this patch
     real(r8) :: crown_area_covered ! accumulator variable for patch crown area
@@ -2978,8 +2978,9 @@ contains
                   hio_npp_stor_si(io_si) = hio_npp_stor_si(io_si) +               &
                        store_m_net_alloc * n_perm2 / days_per_year / sec_per_day
 
-                  leaf_herbivory   = ccohort%prt%GetHerbivory(leaf_organ, carbon12_element) * days_per_year
-                  hio_grazing_si(io_si) = hio_grazing_si(io_si) + leaf_herbivory * n_perm2 / days_per_year / sec_per_day
+                  herbivory   = ccohort%prt%GetHerbivory(leaf_organ, carbon12_element) * days_per_year
+                  herbivory   = herbivory + ccohort%prt%GetHerbivory(store_organ, carbon12_element) * days_per_year
+                  hio_grazing_si(io_si) = hio_grazing_si(io_si) + herbivory * n_perm2 / days_per_year / sec_per_day
 
                   ! Woody State Variables (basal area growth increment)
                   if ( prt_params%woody(ft) == itrue) then
