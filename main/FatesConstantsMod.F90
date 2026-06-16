@@ -206,6 +206,21 @@ integer, parameter, public :: isemi_stress_decid = 4 ! Flag that indicates that 
   ! precisions are preventing perfect zero in comparison
   real(fates_r8), parameter, public :: nearzero = 1.0e-30_fates_r8
 
+  ! Minimum canopy-area fraction (patch total canopy area / patch area) for a
+  ! patch to be considered to have enough vegetation to warrant a radiation
+  ! solve. This is a *relative* admission gate, consistent with the Norman
+  ! solver's canopy-area test, and replaces absolute "nearzero" gates that
+  ! admitted degenerate, vanishingly small patches into the two-stream solver,
+  ! where the per-element area normalization (division by total canopy area)
+  ! becomes ill-conditioned and trips the conservation checks.
+  real(fates_r8), parameter, public :: rad_min_canopy_frac = 1.0e-9_fates_r8
+
+  ! Minimum disturbance fraction (disturbed area / donor patch area) required to
+  ! spawn a new disturbance patch. Below this *relative* threshold the disturbed
+  ! area is left in the donor patch rather than creating a degenerate tiny patch
+  ! that would later stress area-conservation and radiation checks.
+  real(fates_r8), parameter, public :: min_disturb_frac = 1.0e-9_fates_r8
+
   ! Unit conversion constants:
 
   ! Conversion factor umols of Carbon -> kg of Carbon (1 mol = 12g)

@@ -9,6 +9,7 @@ Module FatesTwoStreamUtilsMod
   use FatesConstantsMod     , only : ifalse
   use FatesConstantsMod     , only : itrue
   use FatesConstantsMod     , only : nearzero,nocomp_bareground
+  use FatesConstantsMod     , only : rad_min_canopy_frac
   use shr_log_mod           , only : errMsg => shr_log_errMsg
   use FatesGlobals          , only : fates_log
   use FatesGlobals          , only : endrun => fates_endrun
@@ -149,7 +150,7 @@ contains
          ! LAI and SAI to conserve area)
         
             
-         if(patch%total_canopy_area>nearzero)then
+         if(patch%total_canopy_area > rad_min_canopy_frac*patch%area)then
             canopy_frac(:) = 0._r8
             cohort => patch%tallest
             do while (associated(cohort))

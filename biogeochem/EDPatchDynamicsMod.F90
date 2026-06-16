@@ -80,6 +80,7 @@ module EDPatchDynamicsMod
   use FatesConstantsMod    , only : days_per_sec
   use FatesConstantsMod    , only : years_per_day
   use FatesConstantsMod    , only : nearzero
+  use FatesConstantsMod    , only : min_disturb_frac
   use FatesConstantsMod    , only : primaryland, secondaryland, pastureland, rangeland, cropland
   use FatesConstantsMod    , only : nocomp_bareground_land
   use FatesConstantsMod    , only : n_landuse_cats
@@ -657,8 +658,11 @@ contains
                             disturbance_rate = 1.0_r8
                          end if
 
-                         ! Only create new patches that have non-negligible amount of land
-                         if((currentPatch%area*disturbance_rate) > nearzero ) then
+                         ! Only create new patches that have non-negligible amount of land.
+                         ! Use a relative gate (fraction of the donor patch that is disturbed)
+                         ! rather than an absolute one, so vanishingly small disturbance areas
+                         ! are left in the donor patch instead of spawning a degenerate patch.
+                         if(disturbance_rate > min_disturb_frac ) then
 
                             site_areadis = site_areadis + currentPatch%area * disturbance_rate
 
@@ -674,7 +678,7 @@ contains
                 enddo patchloop_areadis! end loop over patches. sum area disturbed for all patches.
 
                 ! It is possible that no disturbance area was generated
-                if ( site_areadis > nearzero) then
+                if ( site_areadis > min_disturb_frac*area_site) then
 
                    age = 0.0_r8
 
@@ -728,7 +732,7 @@ contains
                          ! patch_site_areadis is the absolute amount of the patch's area that is disturbed and donated
                          patch_site_areadis = currentPatch%area * disturbance_rate
                          
-                         areadis_gt_zero_if: if ( patch_site_areadis > nearzero ) then
+                         areadis_gt_zero_if: if ( disturbance_rate > min_disturb_frac ) then
 
                             if(.not.associated(newPatch))then
                                write(fates_log(),*) 'Patch spawning has attempted to point to'
