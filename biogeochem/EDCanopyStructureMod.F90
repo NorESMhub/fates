@@ -83,7 +83,8 @@ module EDCanopyStructureMod
   !    can get to magnitude e4, this gives us about two orders of magitude in math
   !    precision (ie e15-(e4+e9)=e2) in significant digits to match this absolute precision
   
-  real(r8), parameter :: co_area_target_precision = 1.0E-9_r8 
+  real(r8), parameter :: co_area_target_precision = 1.0E-9_r8
+  real(r8), parameter :: rel_r8_precision = 1.0E-15_r8
 
   integer, parameter :: demotion_phase  = 1
   integer, parameter :: promotion_phase = 2
@@ -564,7 +565,7 @@ contains
 
          sumpd_area = 0._r8
          ic  = 1
-         do while( ic<=n_layer .and. (promdem_area-sumpd_area)>co_area_target_precision) 
+         do while( ic<=n_layer .and. (promdem_area-sumpd_area)>co_area_target_precision and (promdem_area-sumpd_area)/promdem_area > rel_r8_precision)
 
             cohort => layer_co(ic)%p
 
@@ -611,7 +612,7 @@ contains
          !    the cohort area within precision checks then fail
          
          
-         whole_or_part: if( ((layer_co(ic)%pd_area - cohort%c_area) > co_area_target_precision ) .or. &
+         whole_or_part: if( ((layer_co(ic)%pd_area - cohort%c_area) > co_area_target_precision  .and. (layer_co(ic)%pd_area - cohort%c_area)/cohort%c_area) > rel_r8_precision) .or. &
               (layer_co(ic)%pd_area < 0._r8) ) then
             write(fates_log(),*) 'negative,or more area than the cohort has is being promoted/demoted'
             write(fates_log(),*) 'change: ',layer_co(ic)%pd_area
@@ -620,7 +621,7 @@ contains
             call endrun(msg=errMsg(sourcefile, __LINE__))
 
          
-         elseif ( abs(layer_co(ic)%pd_area - cohort%c_area) < co_area_target_precision ) then
+         elseif ( abs(layer_co(ic)%pd_area - cohort%c_area) < co_area_target_precision  .or. abs(layer_co(ic)%pd_area - cohort%c_area)/cohort%c_area < rel_r8_precision ) then
 
             ! Whole cohort promotion/demotion
             cohort%canopy_layer = cohort%canopy_layer + ilyr_change
