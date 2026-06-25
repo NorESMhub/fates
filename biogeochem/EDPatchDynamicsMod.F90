@@ -674,7 +674,7 @@ contains
                 enddo patchloop_areadis! end loop over patches. sum area disturbed for all patches.
 
                 ! It is possible that no disturbance area was generated
-                if ( site_areadis > currentSite%area*rel_patch_area_floor) then
+                if ( site_areadis > area_site*rel_patch_area_floor) then
 
                    age = 0.0_r8
 
@@ -1415,7 +1415,7 @@ contains
                 !**  INSERT NEW PATCH(ES) INTO LINKED LIST
                 !*************************/
 
-                if ( site_areadis .gt. currentSite%area*rel_patch_area_floor) then
+                if ( site_areadis .gt. area_site*rel_patch_area_floor) then
 
                    call InsertPatch(currentSite, newPatch)
 
