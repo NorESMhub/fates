@@ -1363,7 +1363,7 @@ contains
                             ! almost entirely disturbed, treat the remnant as negligible and zero its remaining
                             ! disturbance rates (the remnant is fused/terminated later). Otherwise rescale, clamping each
                             ! rate to 1 since a patch cannot disturb more than its whole remaining area.
-                            rescale_resid_if: if (currentPatch%area > currentPatch%area*rel_patch_area_floor) then
+                            rescale_resid_if: if (currentPatch%area > oldarea*rel_patch_area_floor) then
                                if (i_disturbance_type .lt. N_DIST_TYPES) then
                                   do i_dist2 = i_disturbance_type+1,N_DIST_TYPES-1
                                      currentPatch%disturbance_rates(i_dist2) = min(1.0_r8, &
