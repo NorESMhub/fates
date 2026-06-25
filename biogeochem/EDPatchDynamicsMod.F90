@@ -658,7 +658,7 @@ contains
                          end if
 
                          ! Only create new patches that have non-negligible amount of land
-                         if((currentPatch%area*disturbance_rate) > area*rel_patch_area_floor ) then
+                         if((currentPatch%area*disturbance_rate) > currentPatch%area*rel_patch_area_floor ) then
 
                             site_areadis = site_areadis + currentPatch%area * disturbance_rate
 
@@ -674,7 +674,7 @@ contains
                 enddo patchloop_areadis! end loop over patches. sum area disturbed for all patches.
 
                 ! It is possible that no disturbance area was generated
-                if ( site_areadis > area*rel_patch_area_floor) then
+                if ( site_areadis > currentSite%area*rel_patch_area_floor) then
 
                    age = 0.0_r8
 
@@ -728,7 +728,7 @@ contains
                          ! patch_site_areadis is the absolute amount of the patch's area that is disturbed and donated
                          patch_site_areadis = currentPatch%area * disturbance_rate
                          
-                         areadis_gt_zero_if: if ( patch_site_areadis > area*rel_patch_area_floor ) then
+                         areadis_gt_zero_if: if ( patch_site_areadis > currentPatch%area*rel_patch_area_floor ) then
 
                             if(.not.associated(newPatch))then
                                write(fates_log(),*) 'Patch spawning has attempted to point to'
@@ -1363,7 +1363,7 @@ contains
                             ! almost entirely disturbed, treat the remnant as negligible and zero its remaining
                             ! disturbance rates (the remnant is fused/terminated later). Otherwise rescale, clamping each
                             ! rate to 1 since a patch cannot disturb more than its whole remaining area.
-                            rescale_resid_if: if (currentPatch%area > area*rel_patch_area_floor) then
+                            rescale_resid_if: if (currentPatch%area > currentPatch%area*rel_patch_area_floor) then
                                if (i_disturbance_type .lt. N_DIST_TYPES) then
                                   do i_dist2 = i_disturbance_type+1,N_DIST_TYPES-1
                                      currentPatch%disturbance_rates(i_dist2) = min(1.0_r8, &
@@ -1415,7 +1415,7 @@ contains
                 !**  INSERT NEW PATCH(ES) INTO LINKED LIST
                 !*************************/
 
-                if ( site_areadis .gt. area*rel_patch_area_floor) then
+                if ( site_areadis .gt. currentSite%area*rel_patch_area_floor) then
 
                    call InsertPatch(currentSite, newPatch)
 
