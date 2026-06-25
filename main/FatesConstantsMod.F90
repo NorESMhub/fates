@@ -206,6 +206,14 @@ integer, parameter, public :: isemi_stress_decid = 4 ! Flag that indicates that 
   ! precisions are preventing perfect zero in comparison
   real(fates_r8), parameter, public :: nearzero = 1.0e-30_fates_r8
 
+  ! Relative (to the notional site area) floor below which a patch or
+  ! disturbance area is considered negligible. This is used in place of
+  ! absolute thresholds (e.g. nearzero, fates_tiny) when comparing patch
+  ! areas, so that the comparison scales with operand magnitude rather than
+  ! demanding bit-exact agreement of large numbers. At the default notional
+  ! area (1e4 m2) this corresponds to 1e-5 m2.
+  real(fates_r8), parameter, public :: rel_patch_area_floor = 1.0e-9_fates_r8
+
   ! Unit conversion constants:
 
   ! Conversion factor umols of Carbon -> kg of Carbon (1 mol = 12g)

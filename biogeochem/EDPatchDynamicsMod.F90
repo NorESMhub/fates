@@ -43,7 +43,7 @@ module EDPatchDynamicsMod
   use EDTypesMod           , only : AREA_INV
   use EDTypesMod           , only : dump_site
   use FatesConstantsMod    , only : rsnbl_math_prec
-  use FatesConstantsMod    , only : fates_tiny
+  use FatesConstantsMod    , only : rel_patch_area_floor
   use FatesConstantsMod    , only : nocomp_bareground
   use FatesInterfaceTypesMod    , only : hlm_use_planthydro
   use FatesInterfaceTypesMod    , only : bc_in_type
@@ -391,7 +391,7 @@ contains
        ! for non-closed-canopy areas subject to logging, add an additional increment of area disturbed
        ! equivalent to the fraction logged to account for transfer of interstitial ground area to new secondary lands
        if ( (logging_time .or. site_in%transition_landuse_from_off_to_on .or. site_secondaryland_first_exceeding_min) .and. &
-            (currentPatch%area - currentPatch%total_canopy_area) .gt. fates_tiny ) then
+            (currentPatch%area - currentPatch%total_canopy_area) .gt. currentPatch%area*rel_patch_area_floor ) then
           ! The canopy is NOT closed. 
 
           if (.not. site_in%transition_landuse_from_off_to_on) then
@@ -658,7 +658,7 @@ contains
                          end if
 
                          ! Only create new patches that have non-negligible amount of land
-                         if((currentPatch%area*disturbance_rate) > nearzero ) then
+                         if((currentPatch%area*disturbance_rate) > area*rel_patch_area_floor ) then
 
                             site_areadis = site_areadis + currentPatch%area * disturbance_rate
 
@@ -674,7 +674,7 @@ contains
                 enddo patchloop_areadis! end loop over patches. sum area disturbed for all patches.
 
                 ! It is possible that no disturbance area was generated
-                if ( site_areadis > nearzero) then
+                if ( site_areadis > area*rel_patch_area_floor) then
 
                    age = 0.0_r8
 
@@ -728,7 +728,7 @@ contains
                          ! patch_site_areadis is the absolute amount of the patch's area that is disturbed and donated
                          patch_site_areadis = currentPatch%area * disturbance_rate
                          
-                         areadis_gt_zero_if: if ( patch_site_areadis > nearzero ) then
+                         areadis_gt_zero_if: if ( patch_site_areadis > area*rel_patch_area_floor ) then
 
                             if(.not.associated(newPatch))then
                                write(fates_log(),*) 'Patch spawning has attempted to point to'
@@ -1358,22 +1358,39 @@ contains
                             currentPatch%area = currentPatch%area - patch_site_areadis
 
                             ! for all disturbance rates that haven't been resolved yet, increase their amount so that
-                            ! they are the same amount of gridcell-scale disturbance relative to the original patch size
-                            if (i_disturbance_type .lt. N_DIST_TYPES) then
-                               do i_dist2 = i_disturbance_type+1,N_DIST_TYPES-1
-                                  currentPatch%disturbance_rates(i_dist2) = currentPatch%disturbance_rates(i_dist2) &
-                                       * oldarea / currentPatch%area
-                               end do
-                               do i_dist2 = 1,n_landuse_cats
-                                  currentPatch%landuse_transition_rates(i_dist2) = currentPatch%landuse_transition_rates(i_dist2) &
-                                       * oldarea / currentPatch%area
-                               end do
+                            ! they are the same amount of gridcell-scale disturbance relative to the original patch size.
+                            ! Guard against dividing by a vanishingly small remnant area: if the donor patch has been
+                            ! almost entirely disturbed, treat the remnant as negligible and zero its remaining
+                            ! disturbance rates (the remnant is fused/terminated later). Otherwise rescale, clamping each
+                            ! rate to 1 since a patch cannot disturb more than its whole remaining area.
+                            rescale_resid_if: if (currentPatch%area > area*rel_patch_area_floor) then
+                               if (i_disturbance_type .lt. N_DIST_TYPES) then
+                                  do i_dist2 = i_disturbance_type+1,N_DIST_TYPES-1
+                                     currentPatch%disturbance_rates(i_dist2) = min(1.0_r8, &
+                                          currentPatch%disturbance_rates(i_dist2) * oldarea / currentPatch%area)
+                                  end do
+                                  do i_dist2 = 1,n_landuse_cats
+                                     currentPatch%landuse_transition_rates(i_dist2) = min(1.0_r8, &
+                                          currentPatch%landuse_transition_rates(i_dist2) * oldarea / currentPatch%area)
+                                  end do
+                               else
+                                  do i_dist2 = i_landusechange_receiverpatchlabel+1,n_landuse_cats
+                                     currentPatch%landuse_transition_rates(i_dist2) = min(1.0_r8, &
+                                          currentPatch%landuse_transition_rates(i_dist2) * oldarea / currentPatch%area)
+                                  end do
+                               end if
                             else
-                               do i_dist2 = i_landusechange_receiverpatchlabel+1,n_landuse_cats
-                                  currentPatch%landuse_transition_rates(i_dist2) = currentPatch%landuse_transition_rates(i_dist2) &
-                                       * oldarea / currentPatch%area
-                               end do
-                            end if
+                               if (i_disturbance_type .lt. N_DIST_TYPES) then
+                                  do i_dist2 = i_disturbance_type+1,N_DIST_TYPES-1
+                                     currentPatch%disturbance_rates(i_dist2) = 0._r8
+                                  end do
+                                  currentPatch%landuse_transition_rates(1:n_landuse_cats) = 0._r8
+                               else
+                                  do i_dist2 = i_landusechange_receiverpatchlabel+1,n_landuse_cats
+                                     currentPatch%landuse_transition_rates(i_dist2) = 0._r8
+                                  end do
+                               end if
+                            end if rescale_resid_if
 
                             ! sort out the cohorts, since some of them may be so small as to need removing.
                             ! the first call to terminate cohorts removes sparse number densities,
@@ -1398,7 +1415,7 @@ contains
                 !**  INSERT NEW PATCH(ES) INTO LINKED LIST
                 !*************************/
 
-                if ( site_areadis .gt. nearzero) then
+                if ( site_areadis .gt. area*rel_patch_area_floor) then
 
                    call InsertPatch(currentSite, newPatch)
 
