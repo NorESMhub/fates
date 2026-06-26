@@ -212,12 +212,6 @@ integer, parameter, public :: isemi_stress_decid = 4 ! Flag that indicates that 
   ! precisions are preventing perfect zero in comparison
   real(fates_r8), parameter, public :: nearzero = 1.0e-30_fates_r8
 
-  ! Dimensionless fraction used to define an absolute floor for area comparisons.
-  ! Areas smaller than (reference_area * rel_patch_area_floor) are treated as
-  ! negligible, where reference_area is typically the notional site area
-  ! (EDTypesMod:area = 1e4 m2), but may be a patch area in some contexts.
-  real(fates_r8), parameter, public :: rel_patch_area_floor = 1.0e-15_fates_r8
-
   ! Unit conversion constants:
 
   ! Conversion factor umols of Carbon -> kg of Carbon (1 mol = 12g)
