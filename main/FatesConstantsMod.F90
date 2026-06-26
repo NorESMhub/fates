@@ -210,7 +210,7 @@ integer, parameter, public :: isemi_stress_decid = 4 ! Flag that indicates that 
   ! Areas smaller than (reference_area * rel_patch_area_floor) are treated as
   ! negligible, where reference_area is typically the notional site area
   ! (EDTypesMod:area = 1e4 m2), but may be a patch area in some contexts.
-  real(fates_r8), parameter, public :: rel_patch_area_floor = 1.0e-9_fates_r8
+  real(fates_r8), parameter, public :: rel_patch_area_floor = 1.0e-15_fates_r8
 
   ! Unit conversion constants:
 
