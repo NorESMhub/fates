@@ -44,6 +44,7 @@ module EDPatchDynamicsMod
   use EDTypesMod           , only : dump_site
   use FatesConstantsMod    , only : rsnbl_math_prec
   use FatesConstantsMod    , only : rel_patch_area_floor
+  use FatesConstantsMod    , only : min_nocomp_pftfrac_perlanduse
   use FatesConstantsMod    , only : nocomp_bareground
   use FatesInterfaceTypesMod    , only : hlm_use_planthydro
   use FatesInterfaceTypesMod    , only : bc_in_type
