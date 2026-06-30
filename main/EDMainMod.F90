@@ -811,7 +811,7 @@ contains
   end subroutine ed_integrate_state_variables
 
   !-------------------------------------------------------------------------------!
-  subroutine ed_update_site( currentSite, bc_in, bc_out, is_restarting )
+  subroutine ed_update_site( currentSite, bc_in, bc_out, is_restarting, bad_restart_patches )
     !
     ! !DESCRIPTION:
     ! Calls routines to consolidate the ED growth process.
@@ -828,6 +828,7 @@ contains
     type(bc_in_type)   , intent(in)       :: bc_in
     type(bc_out_type)  , intent(inout)    :: bc_out
     logical,intent(in)                    :: is_restarting ! is this called during restart read?
+    logical,intent(in), optional          :: bad_restart_patches ! if in nocomp and starting from corrupted restartfile
     !
     real(r8) :: biomass_stock   ! total biomass   in Kg/site    
     real(r8) :: litter_stock    ! total litter    in Kg/site
@@ -880,6 +881,13 @@ contains
           call terminate_cohorts(currentSite, currentPatch, 1, 11, bc_in)
           call terminate_cohorts(currentSite, currentPatch, 2, 11, bc_in)
        end if
+       if (present(bad_restart_patches)) then
+         if (bad_restart_patches) then
+           !write(fates_log(),*) 'MVD: in bad cohort termination'
+           call terminate_cohorts(currentSite, currentPatch, 4, 33, bc_in)
+           call currentPatch%CheckCohortsPfts(1)
+         endif
+       endif
 
        ! This cohort count is used in the photosynthesis loop
        call currentPatch%CountCohorts()

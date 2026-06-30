@@ -552,6 +552,7 @@ contains
     real(r8) :: max_val
     integer  :: i_land_use_label
     integer  :: i_pft
+    integer  :: cc_rc
     real(r8) :: newp_area, area_to_keep, fraction_to_keep
     logical  :: buffer_patch_in_linked_list
     integer  :: n_pfts_by_landuse
@@ -1348,11 +1349,13 @@ contains
 
                                currentCohort => currentCohort%taller
                             enddo cohortloop
+                            cc_rc=0
                             call newPatch%ValidateCohorts()
+                            call newPatch%CheckCohortsPfts(0,cc_rc)
 
                             call currentPatch%SortCohorts()
                             call currentPatch%ValidateCohorts()
-
+                            call currentPatch%CheckCohortsPfts(0,cc_rc)
                             !update area of donor patch
                             oldarea = currentPatch%area
                             currentPatch%area = currentPatch%area - patch_site_areadis
@@ -1384,7 +1387,13 @@ contains
                             call terminate_cohorts(currentSite, currentPatch, 2,16,bc_in)
                             call currentPatch%SortCohorts()
                             call currentPatch%ValidateCohorts()
-
+                            call currentPatch%CheckCohortsPfts(0,cc_rc)
+                            if (cc_rc .ne. 0) then
+                                call terminate_cohorts(currentSite, currentPatch, 4,36,bc_in)
+                                call currentPatch%SortCohorts()
+                                call currentPatch%ValidateCohorts()
+                                call currentPatch%CheckCohortsPfts(0,cc_rc)
+                            endif
                          end if areadis_gt_zero_if   ! if ( newPatch%area > nearzero ) then
 
                       end if patchlabel_matches_lutype_if
@@ -1410,8 +1419,12 @@ contains
                    call terminate_cohorts(currentSite, newPatch, 1,17, bc_in)
                    call fuse_cohorts(currentSite,newPatch, bc_in)
                    call terminate_cohorts(currentSite, newPatch, 2,17, bc_in)
+                   if (hlm_use_nocomp) then
+                      call terminate_cohorts(currentSite, newPatch, 4,35, bc_in)
+                   end if
                    call newPatch%SortCohorts()
                    call newPatch%ValidateCohorts()
+                   call newPatch%CheckCohortsPfts(0)
                 endif
 
 
@@ -1622,13 +1635,13 @@ contains
 
                                ! give the new patch the intended nocomp PFT label
                                temp_patch%nocomp_pft_label = i_pft
-
+                               call temp_patch%CheckCohortsPfts(0)
                                ! track that we have added this patch area
                                nocomp_pft_area_vector_filled(i_pft) = nocomp_pft_area_vector_filled(i_pft) + temp_patch%area
 
                                ! put the new patch into the linked list
                                call InsertPatch(currentSite, temp_patch)
-
+                               call temp_patch%CheckCohortsPfts(0)
                             else
                                ! give the buffer patch the intended nocomp PFT label
                                buffer_patch%nocomp_pft_label = i_pft
@@ -1638,7 +1651,7 @@ contains
 
                                ! put the buffer patch directly into the linked list
                                call InsertPatch(currentSite, buffer_patch)
-
+                               call buffer_patch%CheckCohortsPfts(0)
                                buffer_patch_in_linked_list = .true.
 
                             end if
@@ -1696,7 +1709,26 @@ contains
                 currentPatch => currentSite%oldest_patch
                 do while(associated(currentPatch))
                    if (currentPatch%changed_landuse_this_ts .and. currentPatch%land_use_label .eq. i_land_use_label) then
+                      cc_rc=0
+                      call currentPatch%CheckCohortsPfts(0,cc_rc)
+                      if (cc_rc .ne. 0) then
+                         i_pft = currentPatch%nocomp_pft_label
+                         write(fates_log(),*) 'MVD: 1705 EDPD ncpft,wpa,npa',i_pft,which_pft_allowed,n_pfts_by_landuse
+                      endif
                       currentPatch%nocomp_pft_label = which_pft_allowed
+                      if (n_pfts_by_landuse .eq. 1 .and. cc_rc .ne. 0) then
+                         !write(fates_log(),*) 'MVD: in bad cohort termination spawn patchs', n_pfts_by_landuse, which_pft_allowed
+                         call terminate_cohorts(currentSite, currentPatch, 4, 34, bc_in)
+                         call currentPatch%SortCohorts()
+                         call currentPatch%ValidateCohorts()
+
+                      end if
+                      call currentPatch%CheckCohortsPfts(0,cc_rc)
+                      if (debug .and. cc_rc .ne. 0) then
+                         i_pft = currentPatch%nocomp_pft_label
+                         write(fates_log(),*) 'Warning terminating cohorts did not help to remove wrong pfts on nocomp patch ',i_pft,which_pft_allowed,n_pfts_by_landuse,i_land_use_label
+                      endif
+
                       currentPatch%changed_landuse_this_ts = .false.
                    end if
                    currentPatch => currentPatch%younger
@@ -3409,6 +3441,8 @@ contains
     !  Terminate Patches if they  are too small                          
     !
     !
+
+    use EDCohortDynamicsMod  , only : terminate_cohorts
     ! !ARGUMENTS:
     type(ed_site_type), target, intent(inout) :: currentSite
     type(bc_in_type), intent(in)               :: bc_in
@@ -3452,7 +3486,6 @@ contains
                      .not. gotfused) then
 
                    call fuse_2_patches(currentSite, patchpointer, currentPatch)
-                   
                    gotfused = .true.
                 else
                    patchpointer => patchpointer%older
@@ -3550,7 +3583,7 @@ contains
                    endif distlabel_2_if     ! anthro labels
                 endif not_gotfused_if ! has an older patch
              endif notyoungest_if ! is not the youngest patch
-        endif nocomp_if
+          endif nocomp_if
         endif lessthan_min_patcharea_if ! very small patch
 
        ! It is possible that an incredibly small patch just fused into another incredibly
@@ -3661,6 +3694,15 @@ contains
        
     enddo ! current patch loop
     
+    currentPatch => currentSite%youngest_patch
+    do while(associated(currentPatch))
+       call terminate_cohorts(currentSite, currentPatch, 4, 33, bc_in)
+       call currentPatch%SortCohorts()
+       call currentPatch%ValidateCohorts()
+       call currentPatch%CheckCohortsPfts(1)
+       currentPatch => currentPatch%younger
+    end do
+
     !check area is not exceeded
     call check_patch_area( currentSite )
 

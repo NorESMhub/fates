@@ -260,7 +260,7 @@ contains
                           !bit-retart test as a result? FIX(RF,032414)   
                           bc_out(s)%btran_pa(ifp)   = bc_out(s)%btran_pa(ifp) + cpatch%btran_ft(ft)  * pftgs(ft)/sum_pftgs
                       else
-                          bc_out(s)%btran_pa(ifp)   = bc_out(s)%btran_pa(ifp) + cpatch%btran_ft(ft) * 1./numpft
+                          bc_out(s)%btran_pa(ifp) = bc_out(s)%btran_pa(ifp) + cpatch%btran_ft(ft) * 1./real(numpft,r8)
                       end if
                     enddo
                 end if

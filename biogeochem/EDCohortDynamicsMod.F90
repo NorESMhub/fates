@@ -10,6 +10,7 @@ Module EDCohortDynamicsMod
   use FatesInterfaceTypesMod     , only : bc_in_type
   use FatesInterfaceTypesMod     , only : hlm_use_planthydro
   use FatesInterfaceTypesMod     , only : hlm_use_cohort_age_tracking
+  use FatesInterfaceTypesMod     , only : hlm_use_nocomp
   use FatesConstantsMod     , only : r8 => fates_r8
   use FatesConstantsMod     , only : itrue,ifalse
   use FatesConstantsMod     , only : fates_unset_r8
@@ -87,6 +88,7 @@ Module EDCohortDynamicsMod
   use FatesConstantsMod,      only : i_term_mort_type_cstarv
   use FatesConstantsMod,      only : i_term_mort_type_canlev
   use FatesConstantsMod,      only : i_term_mort_type_numdens
+  use FatesConstantsMod,      only : i_term_mort_type_badmath
 
   use shr_infnan_mod,         only : nan => shr_infnan_nan, assignment(=)  
   use shr_log_mod,            only : errMsg => shr_log_errMsg
@@ -104,7 +106,7 @@ Module EDCohortDynamicsMod
   public :: EvaluateAndCorrectDBH
   public :: DamageRecovery
   
-  logical, parameter :: debug  = .false. ! local debug flag
+  logical, parameter :: debug  = .true. ! local debug flag
   
   character(len=*), parameter, private :: sourcefile = &
        __FILE__
@@ -409,6 +411,17 @@ contains
          if ( debug ) then
             write(fates_log(),*) 'terminating cohorts 2', currentCohort%canopy_layer,currentCohort%pft,call_index
          endif
+      endif
+
+      ! Nocomp patches that have cohorts with wrong PFT due to landuse on old restart files.
+      if (hlm_use_nocomp .and. level == 4) then
+          if (currentCohort%pft .ne. currentPatch%nocomp_pft_label) then
+             terminate = itrue
+             termination_type = i_term_mort_type_badmath
+             if ( debug ) then
+                write(fates_log(),*) 'terminating cohorts 6', currentPatch%nocomp_pft_label,currentCohort%pft,call_index
+             endif
+          endif
       endif
 
       if (terminate == itrue) then
