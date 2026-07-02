@@ -96,6 +96,19 @@ module EDCanopyStructureMod
   real(r8), parameter :: area_check_precision  = 1.0E-7_r8     ! Area conservation checks must
   ! be within this absolute tolerance
 
+  ! Relative tolerance for the graceful acceptance of a residual layer-area
+  ! imbalance once the demotion/promotion loop has exhausted its iteration
+  ! budget. Crown area is non-linear in dbh, so the cohort fusion that runs
+  ! inside the balancing loop is not area-conserving; it re-perturbs the
+  ! upper-layer areas by an amount that scales with the (potentially large)
+  ! cohort crown areas. Observed residuals are ~1e-6 of the patch area - well
+  ! above machine precision, but physically negligible. Judging the imbalance
+  ! as a fraction of the patch area (rather than against a fixed absolute floor
+  ! like min_patch_area, which a large patch's fusion noise can exceed) accepts
+  ! these residuals while still aborting on a genuinely large structural
+  ! imbalance.
+  real(r8), parameter :: area_balance_rel_precision = 1.0E-4_r8
+
   real(r8), parameter :: similar_height_tol = 1.0E-3_r8    ! I think trees that differ by 1mm
   ! can be roughly considered the same right?
 
@@ -326,7 +339,7 @@ contains
              ! large imbalance still signals a real structural/conservation bug
              ! and aborts as before.
              if (max_layer_bias <= max(min_patch_area, &
-                  rel_patch_area_floor*currentPatch%area)) then
+                  area_balance_rel_precision*currentPatch%area)) then
 
                 warn_msg = 'EDCanopyStructureMod: accepting unbalanced canopy layer '// &
                      'areas after max iterations; residual bias [m2]='//trim(N2S(max_layer_bias))// &
