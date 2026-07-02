@@ -10,9 +10,11 @@ module EDCanopyStructureMod
   use FatesConstantsMod     , only : tinyr8
   use FatesConstantsMod     , only : nearzero, area_error_1
   use FatesConstantsMod     , only : rsnbl_math_prec
+  use FatesConstantsMod     , only : rel_patch_area_floor
   use FatesConstantsMod     , only : nocomp_bareground
   use FatesConstantsMod,      only : i_term_mort_type_canlev
   use FatesGlobals          , only : fates_log
+  use FatesGlobals          , only : FatesWarn, N2S
   use EDPftvarcon           , only : EDPftvarcon_inst
   use PRTParametersMod      , only : prt_params
   use FatesAllometryMod     , only : carea_allom
@@ -169,6 +171,9 @@ contains
     real(r8) :: arealayer              ! Amount of plant area currently in each canopy layer
     integer  :: patch_area_counter     ! count iterations used to solve canopy areas
     logical  :: area_not_balanced      ! logical controlling if the patch layer areas
+    real(r8) :: layer_bias             ! signed difference between a layer area and the patch area [m2]
+    real(r8) :: max_layer_bias         ! largest (magnitude) out-of-balance layer bias this pass [m2]
+    character(len=1024) :: warn_msg    ! for defining a warning message
     real(r8) :: target_area            ! Canopy area that is either in excess/defiency
                                        ! that is slated for demotion/promotion from/into layer
     
@@ -283,15 +288,23 @@ contains
 
           z = NumCanopyLayers(currentPatch)
           area_not_balanced = .false.
+          max_layer_bias = 0._r8
           do i_lyr = 1,min(z,nclmax)
              call CanopyLayerArea(currentPatch,currentSite%spread,i_lyr,arealayer)
+             layer_bias = arealayer-(1._r8-imperfect_fraction)*currentPatch%area
+             ! The balance tolerance uses an absolute floor plus a term that
+             ! scales with the patch area. A layer area is a sum of (re-computed)
+             ! cohort crown areas whose rounding floor is ~ulp(area), so a bare
+             ! absolute tolerance becomes unreachable once the operands are large.
              if(i_lyr < z)then
-                if (abs(arealayer-(1._r8-imperfect_fraction)*currentPatch%area) > area_check_precision) then
+                if (abs(layer_bias) > max(area_check_precision, rel_patch_area_floor*currentPatch%area)) then
                    area_not_balanced = .true.
+                   max_layer_bias = max(max_layer_bias, abs(layer_bias))
                 end if
              else
-                if ((arealayer-(1._r8-imperfect_fraction)*currentPatch%area) > area_check_precision) then
+                if (layer_bias > max(area_check_precision, rel_patch_area_floor*currentPatch%area)) then
                    area_not_balanced = .true.
+                   max_layer_bias = max(max_layer_bias, layer_bias)
                 end if
              end if
           enddo
@@ -302,32 +315,55 @@ contains
 
           patch_area_counter = patch_area_counter + 1
           if(patch_area_counter > max_patch_iterations .and. area_not_balanced) then
-             write(fates_log(),*) 'PATCH AREA CHECK NOT CLOSING'
-             write(fates_log(),*) 'patch area:',currentpatch%area
-             write(fates_log(),*) 'fraction that is imperfect (unclosed):',imperfect_fraction
-             write(fates_log(),*) 'lat:',currentSite%lat
-             write(fates_log(),*) 'lon:',currentSite%lon
-             write(fates_log(),*) 'spread:',currentSite%spread
-             do i_lyr = 1,z
-                write(fates_log(),*) '-----------------------------------------'
-                call CanopyLayerArea(currentPatch,currentSite%spread,i_lyr,arealayer)
-                write(fates_log(),*) 'layer: ',i_lyr,' area: ',arealayer
-                write(fates_log(),*) 'bias [m2] (layer-patch): ',(arealayer - &
-                     (1._r8-imperfect_fraction)*currentPatch%area)
-                currentCohort => currentPatch%tallest
-                do while (associated(currentCohort))
-                   if(currentCohort%canopy_layer == i_lyr)then
-                      write(fates_log(),*) '-----------'
-                      write(fates_log(),*) ' co area:',currentCohort%c_area
-                      write(fates_log(),*) ' co dbh: ',currentCohort%dbh
-                      write(fates_log(),*) ' co pft: ',currentCohort%pft
-                      write(fates_log(),*) ' co n: ',currentCohort%n
-                   end if
-                   currentCohort => currentCohort%shorter
-                end do
-             enddo
 
-             call endrun(msg=errMsg(sourcefile, __LINE__))
+             ! We have run out of re-balancing iterations while a layer is still
+             ! out of balance. The common benign cause is that cohort fusion
+             ! (non-conserving in crown area, which is non-linear in dbh)
+             ! re-perturbs a layer area by a small, above-machine-precision
+             ! amount every iteration. That residual is physically negligible,
+             ! so rather than aborting the whole simulation we accept it (with a
+             ! warning) when it is a tiny fraction of the patch area. A genuinely
+             ! large imbalance still signals a real structural/conservation bug
+             ! and aborts as before.
+             if (max_layer_bias <= max(min_patch_area, &
+                  rel_patch_area_floor*currentPatch%area)) then
+
+                warn_msg = 'EDCanopyStructureMod: accepting unbalanced canopy layer '// &
+                     'areas after max iterations; residual bias [m2]='//trim(N2S(max_layer_bias))// &
+                     ' patch area [m2]='//trim(N2S(currentPatch%area))
+                call FatesWarn(warn_msg,index=6)
+
+                area_not_balanced = .false.
+
+             else
+
+                write(fates_log(),*) 'PATCH AREA CHECK NOT CLOSING'
+                write(fates_log(),*) 'patch area:',currentpatch%area
+                write(fates_log(),*) 'fraction that is imperfect (unclosed):',imperfect_fraction
+                write(fates_log(),*) 'lat:',currentSite%lat
+                write(fates_log(),*) 'lon:',currentSite%lon
+                write(fates_log(),*) 'spread:',currentSite%spread
+                do i_lyr = 1,z
+                   write(fates_log(),*) '-----------------------------------------'
+                   call CanopyLayerArea(currentPatch,currentSite%spread,i_lyr,arealayer)
+                   write(fates_log(),*) 'layer: ',i_lyr,' area: ',arealayer
+                   write(fates_log(),*) 'bias [m2] (layer-patch): ',(arealayer - &
+                        (1._r8-imperfect_fraction)*currentPatch%area)
+                   currentCohort => currentPatch%tallest
+                   do while (associated(currentCohort))
+                      if(currentCohort%canopy_layer == i_lyr)then
+                         write(fates_log(),*) '-----------'
+                         write(fates_log(),*) ' co area:',currentCohort%c_area
+                         write(fates_log(),*) ' co dbh: ',currentCohort%dbh
+                         write(fates_log(),*) ' co pft: ',currentCohort%pft
+                         write(fates_log(),*) ' co n: ',currentCohort%n
+                      end if
+                      currentCohort => currentCohort%shorter
+                   end do
+                enddo
+
+                call endrun(msg=errMsg(sourcefile, __LINE__))
+             end if
           end if
 
        enddo ! do while(area_not_balanced)
