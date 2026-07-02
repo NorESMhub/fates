@@ -20,6 +20,7 @@ module EDBtranMod
        bc_out_type, &
        numpft
   use FatesInterfaceTypesMod , only : hlm_use_planthydro
+  use FatesInterfaceTypesMod , only : hlm_use_nocomp
   use FatesGlobals      , only : fates_log
   use FatesAllometryMod , only : set_root_fraction
   use shr_log_mod , only      : errMsg => shr_log_errMsg
@@ -30,7 +31,7 @@ module EDBtranMod
   private
 
 
-  logical, parameter :: debug = .true.
+  logical, parameter :: debug = .false.
   character(len=*), parameter :: sourcefile = __FILE__
   
   public :: btran_ed
@@ -176,7 +177,9 @@ contains
                   pftgs(ft) = 0._r8
                 endif
              end do
-               
+
+
+
              ! THIS SHOULD REALLY BE A COHORT LOOP ONCE WE HAVE rootfr_ft FOR COHORTS (RGK)
              cpatch%btran_ft(:) = 0.0_r8
              root_resis(:,:) = 0.0_r8

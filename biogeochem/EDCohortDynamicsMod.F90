@@ -355,19 +355,6 @@ contains
           endif
        endif
 
-
-
-       ! The rest of these are biological starvation checks, only allowed if we
-       ! are not dealing with a recruit (level 2)
-       if (currentcohort%n <  min_n_safemath .and. level == 1) then
-          terminate = itrue
-          termination_type = i_term_mort_type_numdens
-          if ( debug ) then
-             write(fates_log(),*) 'terminating cohorts 0',currentCohort%n/currentPatch%area, &
-                  currentCohort%dbh,currentCohort%pft,call_index
-          endif
-       endif
-
        ! The rest of these are only allowed if we are not dealing with a recruit (level 2)
        if_level_2: if (.not.currentCohort%isnew .and. level == 2) then
 
