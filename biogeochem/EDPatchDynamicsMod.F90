@@ -3571,14 +3571,13 @@ contains
 
     ! Initialize the count cycles
     count_cycles = 0
-    orphan_lu_patch => null()
+    
     ! Start at the youngest patch in the list and assume that the largest patch is this patch
     currentPatch => currentSite%youngest_patch
     do while(associated(currentPatch))
        lessthan_min_patcharea_if: if(currentPatch%area <= min_patch_area)then
 
           nocomp_if: if (hlm_use_nocomp .eq. itrue) then
-
              gotfused = .false.
              patchpointer => currentSite%youngest_patch
              do while(associated(patchpointer))
@@ -3636,17 +3635,36 @@ contains
                    call fuse_2_patches(currentSite, largest_patch, currentPatch)
                    gotfused = .true.
                 else
-                   !! truly nothing else in this land-use label to fuse into; warn as before
-                   warn_msg = 'small nocomp patch wasnt able to find '// &
-                              'another patch to fuse with. '// &
-                              'nocomp pft: '//trim(I2S(currentPatch%nocomp_pft_label))// &
-                              'lu label: '//trim(I2S(currentPatch%land_use_label))// &
-                              'area: '//trim(N2S(currentPatch%area))
-                   call FatesWarn(warn_msg,index=5)
-                   orphan_lu_patch => currentPatch
-                endif
-             endif
-
+                   !! truly nothing else in this land-use label to fuse into;
+                   if (.not. associated(currentPatch,currentSite%youngest_patch) &
+                       .and. currentPatch%area < min_patch_area_forced) then
+                      ! This is the only patch in this landuse label when running with nocomp. It will cause numerical instability.
+                      ! We will terminate 
+                      warn_msg = 'This is an orphah patch with '// &
+                                       'nocomp pft: '//trim(I2S(currentPatch%nocomp_pft_label))// &
+                                       'lu label: '//trim(I2S(currentPatch%land_use_label))// &
+                                       'area: '//trim(N2S(currentPatch%area))// 'sending to bareground.'
+                      call FatesWarn(warn_msg,index=5)
+                      patchpointer => currentSite%youngest_patch
+                      do while(associated(patchpointer))
+                        if (patchpointer%nocomp_pft_label == nocomp_bareground) exit
+                           patchpointer => patchpointer%older
+                      end do
+                      if (associated(patchpointer)) then
+                          currentPatch%nocomp_pft_label = nocomp_bareground
+                          currentPatch%land_use_label = nocomp_bareground_land
+                          call fuse_2_patches(currentSite, currentPatch, patchpointer)
+                          call terminate_cohorts(currentSite, patchpointer, 4,30,bc_in)
+                          call patchpointer%SortCohorts()
+                          call patchpointer%ValidateCohorts()
+                          call patchpointer%CheckCohortsPfts(1)
+                          ! go back to youngest
+                          currentPatch => currentSite%youngest_patch
+                          gotfused = .true.
+                      end if
+                   end if
+                end if
+             end if
           else nocomp_if
 
              ! Even if the patch area is small, avoid fusing it into its neighbor
@@ -3731,37 +3749,6 @@ contains
         endif nocomp_if
         endif lessthan_min_patcharea_if ! very small patch
 
-       if (associated(orphan_lu_patch)) then
-          if (.not. associated(orphan_lu_patch,currentSite%youngest_patch) &
-              .and. orphan_lu_patch%area < min_patch_area_forced) then
-             ! This is the only patch in this landuse label when running with nocomp. It will cause numerical instability.
-             ! We will terminate 
-             warn_msg = 'This is an orphah patch with '// &
-                              'nocomp pft: '//trim(I2S(currentPatch%nocomp_pft_label))// &
-                              'lu label: '//trim(I2S(currentPatch%land_use_label))// &
-                              'area: '//trim(N2S(currentPatch%area))// 'sending to bareground.'
-             call FatesWarn(warn_msg,index=5)
-             patchpointer => currentSite%youngest_patch
-             do while(associated(patchpointer))
-                if (patchpointer%nocomp_pft_label == nocomp_bareground) exit
-                patchpointer => patchpointer%older
-             end do
-
-             if (associated(patchpointer)) then
-                if (.not. associated(orphan_lu_patch,orphan_lu_patch)) then
-                   orphan_lu_patch%nocomp_pft_label = nocomp_bareground
-                   orphan_lu_patch%land_use_label = nocomp_bareground_land
-                   call fuse_2_patches(currentSite, orphan_lu_patch, patchpointer)
-                   call terminate_cohorts(currentSite, currentPatch, 4,30,bc_in)
-                   call currentPatch%SortCohorts()
-                   call currentPatch%ValidateCohorts()
-                   call currentPatch%CheckCohortsPfts(1)
-                endif
-             endif
-             ! if there is no bareground patch -> this orphan patch should be fused later.
-         end if
-         currentPatch => currentSite%youngest_patch
-       end if 
        ! It is possible that an incredibly small patch just fused into another incredibly
        ! small patch, resulting in an incredibly small patch.  It is also possible that this
        ! resulting incredibly small patch is the oldest patch.  If this was true than
