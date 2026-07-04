@@ -3619,15 +3619,16 @@ contains
                 end do
 
                 if ( associated(largest_patch) ) then
-                  if(debug) then
-                     warn_msg = 'small nocomp patch wasnt able to find a matching patch to '// &
+                   if(debug) then
+                      warn_msg = 'small nocomp patch wasnt able to find a matching patch to '// &
                               'fuse with; relabelling and fusing into the largest patch of '// &
                               'the same land-use label. '// &
                               'nocomp pft: '//trim(I2S(currentPatch%nocomp_pft_label))// &
                               'lu label: '//trim(I2S(currentPatch%land_use_label))// &
                               'area: '//trim(N2S(currentPatch%area))
-                     call FatesWarn(warn_msg,index=5)
-
+                  
+                      call FatesWarn(warn_msg,index=5)
+                   end if
                    ! relabel currentPatch to the allowed pft before fusing so the
                    ! nocomp_pft_label check in fuse_2_patches passes
                    currentPatch%nocomp_pft_label = largest_patch%nocomp_pft_label
