@@ -33,5 +33,8 @@ https://github.com/E3SM-Project/E3SM
 
 https://github.com/ESCOMP/cesm
 
-The FATES, E3SM and CTSM teams maintain compatability of the NGEET/FATES master branch with the E3SM master and CTSM master branches respectively. There may be some modest lag time in which the latest commit on the FATES master branch is available to these host land models (HLM) by default.  This is typically correlated with FATES development updates forcing necessary changes to the FATES API.  See the table of [FATES API/HLM compatibility](https://fates-users-guide.readthedocs.io/en/latest/user/release-tags-compat-table.html) for information on which fates tag corresponds to which HLM tag or commit.  
+The FATES, E3SM and CTSM teams maintain compatability of the NGEET/FATES master branch with the E3SM master and CTSM master branches respectively. There may be some modest lag time in which the latest commit on the FATES master branch is available to these host land models (HLM) by default.  This is typically correlated with FATES development updates forcing necessary changes to the FATES API.  See the table of [FATES API/HLM compatibility](https://fates-users-guide.readthedocs.io/en/latest/user/release-tags-compat-table.html) for information on which fates tag corresponds to which HLM tag or commit. 
+
+## TODO take out this section, INFO from 8/7-2026
+This branch represents a rejuvenation of a branch that had been merged but needed to be reverted because regression tests and runs from old finidats were failing. This needs to be reinvestigated and solved later / after the summer
 
