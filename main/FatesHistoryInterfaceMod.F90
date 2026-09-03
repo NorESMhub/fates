@@ -7675,14 +7675,14 @@ contains
           call this%set_history_var(vname='FATES_SECONDARY_AREA_ANTHRO_AP',           &
                units='m2 m-2',                                                       &
                long='secondary forest patch area age distribution since anthropogenic disturbance', &
-               use_default='inactive', avgflag='A', vtype=site_age_r8,               &
+               use_default=trim(drop_in_sp), avgflag='A', vtype=site_age_r8,               &
                hlms='CLM:ALM', upfreq=group_dyna_complx, ivar=ivar, initialize=initialize_variables, &
                index=ih_agesince_anthrodist_si_age)
 
           call this%set_history_var(vname='FATES_SECONDARY_AREA_AP',                &
                units='m2 m-2',                                                       &
                long='secondary forest patch area age distribution since any kind of disturbance', &
-               use_default='inactive', avgflag='A', vtype=site_age_r8,               &
+               use_default=trim(drop_in_sp), avgflag='A', vtype=site_age_r8,               &
                hlms='CLM:ALM', upfreq=group_dyna_complx, ivar=ivar, initialize=initialize_variables, &
                index=ih_secondarylands_fracarea_si_age)
 
