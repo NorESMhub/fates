@@ -211,6 +211,8 @@ contains
       end if ! SP phenology
     end if
 
+    call TotalBalanceCheck(currentSite,100)
+
 
     if (hlm_use_ed_st3.eq.ifalse.and.hlm_use_sp.eq.ifalse) then   ! Bypass if ST3
        
@@ -224,13 +226,19 @@ contains
           call DailyFireModel(currentSite, bc_in)
        end if
 
+       call TotalBalanceCheck(currentSite,101)
+
        ! Calculate disturbance and mortality based on previous timestep vegetation.
        ! disturbance_rates calls logging mortality and other mortalities, Yi Xu
        call disturbance_rates(currentSite, bc_in)
 
+       call TotalBalanceCheck(currentSite,102)
+       
        ! Integrate state variables from annual rates to daily timestep
        call ed_integrate_state_variables(currentSite, bc_in, bc_out )
 
+       call TotalBalanceCheck(currentSite,103)
+       
        ! at this point in the call sequence, if flag to transition_landuse_from_off_to_on was set, unset it as it is no longer needed
        if(currentSite%transition_landuse_from_off_to_on) then
           currentSite%transition_landuse_from_off_to_on = .false.
@@ -251,6 +259,8 @@ contains
     ! Reproduction, Recruitment and Cohort Dynamics : controls cohort organization
     !******************************************************************************
 
+    call TotalBalanceCheck(currentSite,104)
+
     if(hlm_use_ed_st3.eq.ifalse.and.hlm_use_sp.eq.ifalse) then
        currentPatch => currentSite%oldest_patch
        do while (associated(currentPatch))
@@ -263,7 +273,7 @@ contains
           currentPatch => currentPatch%younger
        enddo
 
-       call TotalBalanceCheck(currentSite,1)
+        call TotalBalanceCheck(currentSite,1)
 
        currentPatch => currentSite%oldest_patch
        do while (associated(currentPatch))
@@ -1081,6 +1091,8 @@ contains
                 write(fates_log(),*) 'root litter (by layer): ',sum(litt%root_fines,dim=1)
                 write(fates_log(),*) 'land_use_label: ',currentPatch%land_use_label
                 write(fates_log(),*) 'use_this_pft: ', currentSite%use_this_pft(:)
+                write(fates_log(),*) 'land_use_label, ncpft: ',currentPatch%land_use_label,&
+                     currentPatch%nocomp_pft_label
                 if(print_cohorts)then
                     write(fates_log(),*) '---- Biomass by cohort and organ -----'
                     currentCohort => currentPatch%tallest
