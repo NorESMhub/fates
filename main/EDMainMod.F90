@@ -440,6 +440,9 @@ contains
     real(r8) :: bio0_c, seed0_c, litt0_c ! AUDIT: carbon sub-stocks at routine entry [kgC/site]
     real(r8) :: bio1_c, seed1_c, litt1_c ! AUDIT: carbon sub-stocks at routine exit [kgC/site]
     real(r8) :: tot_c                    ! AUDIT: total stock scratch [kgC/site]
+    real(r8) :: gpp0_c, aresp0_c, frag0_c, herb0_c ! AUDIT: flux accumulators at entry [kgC/site]
+    real(r8) :: seedin0_c, seedout0_c, nru0_c      ! AUDIT: flux accumulators at entry [kgC/site]
+    real(r8) :: flux_net_c, stock_net_c            ! AUDIT: routine-local flux and stock change [kgC/site/day]
     
     integer,parameter :: leaf_c_id = 1
     
@@ -447,7 +450,15 @@ contains
 
     ! AUDIT: bracket this routine to confirm the leak originates here
     call TotalBalanceCheck(currentSite,1021)
+    site_cmass => currentSite%mass_balance(element_pos(carbon12_element))
     call SiteMassStock(currentSite,element_pos(carbon12_element),tot_c,bio0_c,litt0_c,seed0_c)
+    gpp0_c    = site_cmass%gpp_acc
+    aresp0_c  = site_cmass%aresp_acc
+    frag0_c   = site_cmass%frag_out
+    herb0_c   = site_cmass%herbivory_flux_out
+    seedin0_c = site_cmass%seed_in
+    seedout0_c= site_cmass%seed_out
+    nru0_c    = site_cmass%net_root_uptake
 
     current_fates_landuse_state_vector = currentSite%get_current_landuse_statevector()
 
@@ -455,9 +466,6 @@ contains
 
     ! Patch level biomass are required for C-based harvest
     call get_harvestable_carbon(currentSite, bc_in%site_area, bc_in%hlm_harvest_catnames, harvestable_forest_c)
-
-    ! Set a pointer to this sites carbon12 mass balance
-    site_cmass => currentSite%mass_balance(element_pos(carbon12_element))
 
     ! This call updates the assessment of the total stoichiometry
     ! for a new recruit, based on its PFT and the L2FR of
@@ -890,10 +898,27 @@ contains
 
    ! AUDIT: sub-stock changes over the routine (localizes where the residual lands)
    call SiteMassStock(currentSite,element_pos(carbon12_element),tot_c,bio1_c,litt1_c,seed1_c)
+   ! AUDIT: routine-local mass balance (all carbon terms visible, residual = leak)
+   stock_net_c = (bio1_c-bio0_c) + (litt1_c-litt0_c) + (seed1_c-seed0_c)
+   flux_net_c  = (site_cmass%gpp_acc   - gpp0_c) &
+               + (site_cmass%seed_in   - seedin0_c) &
+               + (site_cmass%net_root_uptake - nru0_c) &
+               - (site_cmass%aresp_acc - aresp0_c) &
+               - (site_cmass%frag_out  - frag0_c) &
+               - (site_cmass%herbivory_flux_out - herb0_c) &
+               - (site_cmass%seed_out  - seedout0_c)
    if(hlm_masterproc==itrue) then
       write(fates_log(),*) 'AUDIT d(biomass) [kgC/site/day]: ', bio1_c - bio0_c
       write(fates_log(),*) 'AUDIT d(litter)  [kgC/site/day]: ', litt1_c - litt0_c
       write(fates_log(),*) 'AUDIT d(seed)    [kgC/site/day]: ', seed1_c - seed0_c
+      write(fates_log(),*) 'AUDIT d(gpp)     [kgC/site/day]: ', site_cmass%gpp_acc - gpp0_c
+      write(fates_log(),*) 'AUDIT d(aresp)   [kgC/site/day]: ', site_cmass%aresp_acc - aresp0_c
+      write(fates_log(),*) 'AUDIT d(frag)    [kgC/site/day]: ', site_cmass%frag_out - frag0_c
+      write(fates_log(),*) 'AUDIT d(seed_in) [kgC/site/day]: ', site_cmass%seed_in - seedin0_c
+      write(fates_log(),*) 'AUDIT d(seed_out)[kgC/site/day]: ', site_cmass%seed_out - seedout0_c
+      write(fates_log(),*) 'AUDIT stock_net  [kgC/site/day]: ', stock_net_c
+      write(fates_log(),*) 'AUDIT flux_net   [kgC/site/day]: ', flux_net_c
+      write(fates_log(),*) 'AUDIT routine residual [kgC/site/day]: ', stock_net_c - flux_net_c
    end if
 
    ! AUDIT: bracket this routine to confirm the leak originates here
