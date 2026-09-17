@@ -430,8 +430,6 @@ contains
     real(r8) :: nc_carbon
     real(r8) :: cc_carbon
 
-    real(r8) :: resid_npp_site    ! AUDIT: NPP-allocation closure residual [kgC/site/day]
-    real(r8) :: netalloc_c        ! AUDIT: summed carbon net allocation for a cohort [kgC/plant]
     real(r8) :: herb_removed_site ! AUDIT: total leaf C removed by grazing [kgC/site/day]
     real(r8) :: plant_turnover_c  ! AUDIT: cohort C turnover routed to litter [kgC/site/day]
     real(r8) :: plant_mort_c      ! AUDIT: dead-plant C (incl. logging) [kgC/site/day]
@@ -439,6 +437,9 @@ contains
     real(r8) :: litter_credit_c   ! AUDIT: C credited to litter *_in pools [kgC/site/day]
     real(r8) :: plant_c_live      ! AUDIT: live C of a single plant [kgC/plant]
     type(litter_type), pointer :: litt ! AUDIT: litter pointer for credit tally
+    real(r8) :: bio0_c, seed0_c, litt0_c ! AUDIT: carbon sub-stocks at routine entry [kgC/site]
+    real(r8) :: bio1_c, seed1_c, litt1_c ! AUDIT: carbon sub-stocks at routine exit [kgC/site]
+    real(r8) :: tot_c                    ! AUDIT: total stock scratch [kgC/site]
     
     integer,parameter :: leaf_c_id = 1
     
@@ -446,6 +447,7 @@ contains
 
     ! AUDIT: bracket this routine to confirm the leak originates here
     call TotalBalanceCheck(currentSite,1021)
+    call SiteMassStock(currentSite,element_pos(carbon12_element),tot_c,bio0_c,litt0_c,seed0_c)
 
     current_fates_landuse_state_vector = currentSite%get_current_landuse_statevector()
 
@@ -465,7 +467,6 @@ contains
     call UpdateRecruitStoich(currentSite)
 
     ! AUDIT: initialize per-pathway carbon closure accumulators
-    resid_npp_site    = 0._r8
     herb_removed_site = 0._r8
     plant_turnover_c  = 0._r8
     plant_mort_c      = 0._r8
@@ -711,15 +712,6 @@ contains
           
           call currentCohort%prt%CheckMassConservation(ft,5)
 
-          ! AUDIT: does all NPP get allocated (or burned as excess resp)?
-          netalloc_c = currentCohort%prt%GetNetAlloc(leaf_organ,   carbon12_element) + &
-                       currentCohort%prt%GetNetAlloc(fnrt_organ,   carbon12_element) + &
-                       currentCohort%prt%GetNetAlloc(sapw_organ,   carbon12_element) + &
-                       currentCohort%prt%GetNetAlloc(store_organ,  carbon12_element) + &
-                       currentCohort%prt%GetNetAlloc(struct_organ, carbon12_element) + &
-                       currentCohort%prt%GetNetAlloc(repro_organ,  carbon12_element)
-          resid_npp_site = resid_npp_site + &
-               (currentCohort%npp_acc - currentCohort%resp_excess_hold - netalloc_c) * currentCohort%n
           herb_removed_site = herb_removed_site + &
                currentCohort%prt%GetHerbivory(leaf_organ,carbon12_element) * currentCohort%n
 
@@ -800,10 +792,6 @@ contains
    ! set the L2FRs of newly recruited plants
    
    call UpdateRecruitL2FR(currentSite)
-
-   ! AUDIT: NPP-allocation closure (nonzero => GPP counted but not allocated)
-   if(hlm_masterproc==itrue) write(fates_log(),*) &
-        'AUDIT npp-alloc residual [kgC/site/day]: ', resid_npp_site
 
    ! Update history diagnostics related to Nutrients (if any)
    ! -----------------------------------------------------------------------------
@@ -899,6 +887,14 @@ contains
        enddo
        currentPatch => currentPatch%older
    enddo
+
+   ! AUDIT: sub-stock changes over the routine (localizes where the residual lands)
+   call SiteMassStock(currentSite,element_pos(carbon12_element),tot_c,bio1_c,litt1_c,seed1_c)
+   if(hlm_masterproc==itrue) then
+      write(fates_log(),*) 'AUDIT d(biomass) [kgC/site/day]: ', bio1_c - bio0_c
+      write(fates_log(),*) 'AUDIT d(litter)  [kgC/site/day]: ', litt1_c - litt0_c
+      write(fates_log(),*) 'AUDIT d(seed)    [kgC/site/day]: ', seed1_c - seed0_c
+   end if
 
    ! AUDIT: bracket this routine to confirm the leak originates here
    call TotalBalanceCheck(currentSite,1022)
