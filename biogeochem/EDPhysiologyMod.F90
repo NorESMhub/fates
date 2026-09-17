@@ -2260,30 +2260,35 @@ contains
        ! AUDIT: seed-pathway closure. C removed from plant pools into seed should
        ! equal C delivered to local seed pools plus C exported (seed_out). A nonzero
        ! residual indicates the AREA vs sum(patch_area) normalization leak.
-       if(element_id==carbon12_element .and. hlm_masterproc==itrue) then
+       if(element_id==carbon12_element) then
           seed_exported = 0._r8
           do pft = 1,numpft
              seed_exported = seed_exported + site_seed_rain(pft)*site_disp_frac(pft)
           end do
-          write(fates_log(),*) 'AUDIT seed bio removed   [kgC/site/day]: ', seed_bio_removed
-          write(fates_log(),*) 'AUDIT seed local deliv   [kgC/site/day]: ', seed_local_deliv
-          write(fates_log(),*) 'AUDIT seed exported      [kgC/site/day]: ', seed_exported
-          write(fates_log(),*) 'AUDIT seed closure resid [kgC/site/day]: ', &
-               seed_bio_removed - (seed_local_deliv + seed_exported)
-          write(fates_log(),*) 'AUDIT sum(patch_area) vs AREA [m2]     : ', total_patch_area, area
+          ! Print on masterproc, or on any rank when the closure actually drifts
+          ! (so the offending site, which may be off-master, gets reported).
+          if(hlm_masterproc==itrue .or. &
+               abs(seed_bio_removed - (seed_local_deliv + seed_exported)) > 1.e-12_r8) then
+             write(fates_log(),*) 'AUDIT seed bio removed   [kgC/site/day]: ', seed_bio_removed
+             write(fates_log(),*) 'AUDIT seed local deliv   [kgC/site/day]: ', seed_local_deliv
+             write(fates_log(),*) 'AUDIT seed exported      [kgC/site/day]: ', seed_exported
+             write(fates_log(),*) 'AUDIT seed closure resid [kgC/site/day]: ', &
+                  seed_bio_removed - (seed_local_deliv + seed_exported)
+             write(fates_log(),*) 'AUDIT sum(patch_area) vs AREA [m2]     : ', total_patch_area, area
 
-          ! AUDIT: in nocomp, seed produced by a pft with no home patch
-          ! (nocomp_patch_areas==0) or a disabled pft is stripped from biomass
-          ! but delivered to no seed pool -> leak. Flag the offending pft.
-          if(hlm_use_nocomp==itrue) then
-             do pft = 1,numpft
-                if(site_seed_rain(pft) > nearzero .and. &
-                     (nocomp_patch_areas(pft) <= nearzero .or. &
-                      currentSite%use_this_pft(pft) /= itrue)) then
-                   write(fates_log(),*) 'AUDIT nocomp orphaned seed pft/bio[kgC]/homearea[m2]: ', &
-                        pft, site_seed_rain(pft), nocomp_patch_areas(pft)
-                end if
-             end do
+             ! AUDIT: in nocomp, seed produced by a pft with no home patch
+             ! (nocomp_patch_areas==0) or a disabled pft is stripped from biomass
+             ! but delivered to no seed pool -> leak. Flag the offending pft.
+             if(hlm_use_nocomp==itrue) then
+                do pft = 1,numpft
+                   if(site_seed_rain(pft) > nearzero .and. &
+                        (nocomp_patch_areas(pft) <= nearzero .or. &
+                         currentSite%use_this_pft(pft) /= itrue)) then
+                      write(fates_log(),*) 'AUDIT nocomp orphaned seed pft/bio[kgC]/homearea[m2]: ', &
+                           pft, site_seed_rain(pft), nocomp_patch_areas(pft)
+                   end if
+                end do
+             end if
           end if
        end if
 

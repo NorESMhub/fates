@@ -891,14 +891,6 @@ contains
 
     call FluxIntoLitterPools(currentsite, bc_in, bc_out)
 
-    ! AUDIT: herbivory closure (implied use_eff should equal grazing_carbon_use_eff)
-    if(hlm_masterproc==itrue) then
-       write(fates_log(),*) 'AUDIT herb leaf-C removed [kgC]: ', herb_removed_site
-       write(fates_log(),*) 'AUDIT herb atm flux_out   [kgC]: ', site_cmass%herbivory_flux_out
-       write(fates_log(),*) 'AUDIT herb implied use_eff     : ', &
-            1._r8 - site_cmass%herbivory_flux_out / max(herb_removed_site, nearzero)
-    end if
-
     ! AUDIT: litter-credit tally (plant-side C losses vs C credited to litter *_in pools)
     litter_credit_c = 0._r8
     currentPatch => currentSite%youngest_patch
@@ -909,14 +901,6 @@ contains
               sum(litt%leaf_fines_in) + sum(litt%root_fines_in) )
        currentPatch => currentPatch%older
     enddo
-    if(hlm_masterproc==itrue) then
-       write(fates_log(),*) 'AUDIT plant turnover  [kgC/site/day]: ', plant_turnover_c
-       write(fates_log(),*) 'AUDIT plant mortality [kgC/site/day]: ', plant_mort_c
-       write(fates_log(),*) 'AUDIT herb->litter    [kgC/site/day]: ', herb_litter_c
-       write(fates_log(),*) 'AUDIT litter *_in credit [kgC/site/day]: ', litter_credit_c
-       write(fates_log(),*) 'AUDIT litter-credit residual [kgC/site/day]: ', &
-            (plant_turnover_c + plant_mort_c + herb_litter_c) - litter_credit_c
-    end if
 
     ! Update cohort number.
     ! This needs to happen after the CWD_input and seed_input calculations as they
@@ -957,6 +941,18 @@ contains
       write(fates_log(),*) 'AUDIT stock_net  [kgC/site/day]: ', stock_net_c
       write(fates_log(),*) 'AUDIT flux_net   [kgC/site/day]: ', flux_net_c
       write(fates_log(),*) 'AUDIT routine residual [kgC/site/day]: ', stock_net_c - flux_net_c
+      ! herbivory closure (printed on the offending rank, not just masterproc)
+      write(fates_log(),*) 'AUDIT herb leaf-C removed [kgC/site/day]: ', herb_removed_site
+      write(fates_log(),*) 'AUDIT herb atm flux_out   [kgC/site/day]: ', site_cmass%herbivory_flux_out - herb0_c
+      write(fates_log(),*) 'AUDIT herb implied use_eff              : ', &
+           1._r8 - (site_cmass%herbivory_flux_out - herb0_c) / max(herb_removed_site, nearzero)
+      ! turnover/mortality -> litter crediting closure
+      write(fates_log(),*) 'AUDIT plant turnover  [kgC/site/day]: ', plant_turnover_c
+      write(fates_log(),*) 'AUDIT plant mortality [kgC/site/day]: ', plant_mort_c
+      write(fates_log(),*) 'AUDIT herb->litter    [kgC/site/day]: ', herb_litter_c
+      write(fates_log(),*) 'AUDIT litter *_in credit [kgC/site/day]: ', litter_credit_c
+      write(fates_log(),*) 'AUDIT litter-credit residual [kgC/site/day]: ', &
+           (plant_turnover_c + plant_mort_c + herb_litter_c) - litter_credit_c
    end if
 
    ! AUDIT: bracket this routine to confirm the leak originates here
