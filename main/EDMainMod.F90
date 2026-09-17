@@ -176,6 +176,9 @@ contains
 
     ! AUDIT: reference carbon stock at day start (fluxes now zero)
     call SiteMassStock(currentSite,element_pos(carbon12_element),s0_c,tb_c,tl_c,ts_c)
+    ! AUDIT: imbalance inherited from before today (nonzero => leak is pre day-start)
+    if(hlm_masterproc==itrue) write(fates_log(),*) 'AUDIT inherited (s0-old_stock) [kgC]: ', &
+         s0_c - currentSite%mass_balance(element_pos(carbon12_element))%old_stock
 
     
     ! Call a routine that simply identifies if logging should occur
@@ -305,6 +308,7 @@ contains
          
     end if
 
+    call audit_bal('post-cohortmgmt ')
     call TotalBalanceCheck(currentSite,2)
 
     !*********************************************************************************
@@ -323,6 +327,7 @@ contains
 
        call spawn_patches(currentSite, bc_in)
 
+       call audit_bal('post-spawn      ')
        call TotalBalanceCheck(currentSite,3)
 
        ! fuse on the spawned patches.
@@ -338,6 +343,7 @@ contains
        end if
 
        ! SP has changes in leaf carbon but we don't expect them to be in balance.
+       call audit_bal('post-fusepatch  ')
        call TotalBalanceCheck(currentSite,4)
 
        ! kill patches that are too small
@@ -345,6 +351,7 @@ contains
     end if
 
     ! Final instantaneous mass balance check
+    call audit_bal('post-termpatch  ')
     call TotalBalanceCheck(currentSite,5)
 
   contains
