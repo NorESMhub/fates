@@ -159,6 +159,7 @@ contains
     type(fates_patch_type), pointer :: currentPatch
     integer :: el                ! Loop counter for variables 
     integer :: do_patch_dynamics ! for some modes, we turn off patch dynamics
+    real(r8) :: s0_c, tb_c, tl_c, ts_c ! AUDIT: total/biomass/litter/seed C at day start [kgC/site]
 
     !-----------------------------------------------------------------------
 
@@ -172,6 +173,9 @@ contains
        call currentSite%mass_balance(el)%ZeroMassBalFlux()
     end do
     call currentSite%flux_diags%ZeroFluxDiags()
+
+    ! AUDIT: reference carbon stock at day start (fluxes now zero)
+    call SiteMassStock(currentSite,element_pos(carbon12_element),s0_c,tb_c,tl_c,ts_c)
 
     
     ! Call a routine that simply identifies if logging should occur
@@ -211,6 +215,7 @@ contains
       end if ! SP phenology
     end if
 
+    call audit_bal('post-phenology  ')
     call TotalBalanceCheck(currentSite,100)
 
 
@@ -226,17 +231,20 @@ contains
           call DailyFireModel(currentSite, bc_in)
        end if
 
+       call audit_bal('post-fire       ')
        call TotalBalanceCheck(currentSite,101)
 
        ! Calculate disturbance and mortality based on previous timestep vegetation.
        ! disturbance_rates calls logging mortality and other mortalities, Yi Xu
        call disturbance_rates(currentSite, bc_in)
 
+       call audit_bal('post-disturbance')
        call TotalBalanceCheck(currentSite,102)
        
        ! Integrate state variables from annual rates to daily timestep
        call ed_integrate_state_variables(currentSite, bc_in, bc_out )
 
+       call audit_bal('post-integrate  ')
        call TotalBalanceCheck(currentSite,103)
        
        ! at this point in the call sequence, if flag to transition_landuse_from_off_to_on was set, unset it as it is no longer needed
@@ -273,6 +281,7 @@ contains
           currentPatch => currentPatch%younger
        enddo
 
+        call audit_bal('post-recruitment')
         call TotalBalanceCheck(currentSite,1)
 
        currentPatch => currentSite%oldest_patch
@@ -337,6 +346,22 @@ contains
 
     ! Final instantaneous mass balance check
     call TotalBalanceCheck(currentSite,5)
+
+  contains
+
+    ! AUDIT: unguarded incremental carbon balance since day start (residual should be ~0)
+    subroutine audit_bal(lbl)
+      character(len=*), intent(in) :: lbl
+      real(r8) :: s_c, tb, tl, ts, fnet
+      type(site_massbal_type), pointer :: scm
+      call SiteMassStock(currentSite,element_pos(carbon12_element),s_c,tb,tl,ts)
+      scm => currentSite%mass_balance(element_pos(carbon12_element))
+      fnet = scm%seed_in + scm%net_root_uptake + scm%gpp_acc + scm%flux_generic_in + scm%patch_resize_err &
+           - sum(scm%wood_product_harvest(:)) - sum(scm%wood_product_landusechange(:)) &
+           - sum(scm%burn_flux_to_atm(:)) - scm%seed_out - scm%flux_generic_out &
+           - scm%frag_out - scm%aresp_acc - scm%herbivory_flux_out
+      if(hlm_masterproc==itrue) write(fates_log(),*) 'AUDIT resid '//lbl//' [kgC]: ', (s_c - s0_c) - fnet
+    end subroutine audit_bal
 
   end subroutine ed_ecosystem_dynamics
 
