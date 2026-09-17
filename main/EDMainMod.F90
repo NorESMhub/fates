@@ -176,9 +176,11 @@ contains
 
     ! AUDIT: reference carbon stock at day start (fluxes now zero)
     call SiteMassStock(currentSite,element_pos(carbon12_element),s0_c,tb_c,tl_c,ts_c)
-    ! AUDIT: imbalance inherited from before today (nonzero => leak is pre day-start)
-    if(hlm_masterproc==itrue) write(fates_log(),*) 'AUDIT inherited (s0-old_stock) [kgC]: ', &
-         s0_c - currentSite%mass_balance(element_pos(carbon12_element))%old_stock
+    ! AUDIT: imbalance inherited from before today (any rank; nonzero => leak is pre day-start)
+    if(abs(s0_c - currentSite%mass_balance(element_pos(carbon12_element))%old_stock) > 1.e-9_r8) &
+         write(fates_log(),*) 'AUDIT inherited (s0-old_stock) [kgC] lat/lon: ', &
+         s0_c - currentSite%mass_balance(element_pos(carbon12_element))%old_stock, &
+         currentSite%lat, currentSite%lon
 
     
     ! Call a routine that simply identifies if logging should occur
@@ -359,7 +361,7 @@ contains
     ! AUDIT: unguarded incremental carbon balance since day start (residual should be ~0)
     subroutine audit_bal(lbl)
       character(len=*), intent(in) :: lbl
-      real(r8) :: s_c, tb, tl, ts, fnet
+      real(r8) :: s_c, tb, tl, ts, fnet, resid
       type(site_massbal_type), pointer :: scm
       call SiteMassStock(currentSite,element_pos(carbon12_element),s_c,tb,tl,ts)
       scm => currentSite%mass_balance(element_pos(carbon12_element))
@@ -367,7 +369,10 @@ contains
            - sum(scm%wood_product_harvest(:)) - sum(scm%wood_product_landusechange(:)) &
            - sum(scm%burn_flux_to_atm(:)) - scm%seed_out - scm%flux_generic_out &
            - scm%frag_out - scm%aresp_acc - scm%herbivory_flux_out
-      if(hlm_masterproc==itrue) write(fates_log(),*) 'AUDIT resid '//lbl//' [kgC]: ', (s_c - s0_c) - fnet
+      resid = (s_c - s0_c) - fnet
+      ! Print on any rank when the running balance drifts (catches the offending site)
+      if(abs(resid) > 1.e-9_r8) write(fates_log(),*) 'AUDIT resid '//lbl//' [kgC] lat/lon: ', &
+           resid, currentSite%lat, currentSite%lon
     end subroutine audit_bal
 
   end subroutine ed_ecosystem_dynamics
@@ -939,7 +944,8 @@ contains
                - (site_cmass%frag_out  - frag0_c) &
                - (site_cmass%herbivory_flux_out - herb0_c) &
                - (site_cmass%seed_out  - seedout0_c)
-   if(hlm_masterproc==itrue) then
+   if(hlm_masterproc==itrue .or. abs(stock_net_c - flux_net_c) > 1.e-9_r8) then
+      write(fates_log(),*) 'AUDIT lat/lon: ', currentSite%lat, currentSite%lon
       write(fates_log(),*) 'AUDIT d(biomass) [kgC/site/day]: ', bio1_c - bio0_c
       write(fates_log(),*) 'AUDIT d(litter)  [kgC/site/day]: ', litt1_c - litt0_c
       write(fates_log(),*) 'AUDIT d(seed)    [kgC/site/day]: ', seed1_c - seed0_c
