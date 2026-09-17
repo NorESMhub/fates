@@ -428,10 +428,17 @@ contains
     real(r8) :: total_c0
     real(r8) :: nc_carbon
     real(r8) :: cc_carbon
+
+    real(r8) :: resid_npp_site    ! AUDIT: NPP-allocation closure residual [kgC/site/day]
+    real(r8) :: netalloc_c        ! AUDIT: summed carbon net allocation for a cohort [kgC/plant]
+    real(r8) :: herb_removed_site ! AUDIT: total leaf C removed by grazing [kgC/site/day]
     
     integer,parameter :: leaf_c_id = 1
     
     !-----------------------------------------------------------------------
+
+    ! AUDIT: bracket this routine to confirm the leak originates here
+    call TotalBalanceCheck(currentSite,1021)
 
     current_fates_landuse_state_vector = currentSite%get_current_landuse_statevector()
 
@@ -449,6 +456,10 @@ contains
     ! prior to the growth sequence, where reproductive
     ! tissues are allocated
     call UpdateRecruitStoich(currentSite)
+
+    ! AUDIT: initialize per-pathway carbon closure accumulators
+    resid_npp_site    = 0._r8
+    herb_removed_site = 0._r8
 
     currentPatch => currentSite%oldest_patch
     do while(associated(currentPatch))
@@ -690,6 +701,18 @@ contains
           
           call currentCohort%prt%CheckMassConservation(ft,5)
 
+          ! AUDIT: does all NPP get allocated (or burned as excess resp)?
+          netalloc_c = currentCohort%prt%GetNetAlloc(leaf_organ,   carbon12_element) + &
+                       currentCohort%prt%GetNetAlloc(fnrt_organ,   carbon12_element) + &
+                       currentCohort%prt%GetNetAlloc(sapw_organ,   carbon12_element) + &
+                       currentCohort%prt%GetNetAlloc(store_organ,  carbon12_element) + &
+                       currentCohort%prt%GetNetAlloc(struct_organ, carbon12_element) + &
+                       currentCohort%prt%GetNetAlloc(repro_organ,  carbon12_element)
+          resid_npp_site = resid_npp_site + &
+               (currentCohort%npp_acc - currentCohort%resp_excess_hold - netalloc_c) * currentCohort%n
+          herb_removed_site = herb_removed_site + &
+               currentCohort%prt%GetHerbivory(leaf_organ,carbon12_element) * currentCohort%n
+
           ! Update the leaf biophysical rates based on proportion of leaf
           ! mass in the different leaf age classes. Following growth
           ! and turnover, these proportions won't change again. This
@@ -747,6 +770,10 @@ contains
    
    call UpdateRecruitL2FR(currentSite)
 
+   ! AUDIT: NPP-allocation closure (nonzero => GPP counted but not allocated)
+   if(hlm_masterproc==itrue) write(fates_log(),*) &
+        'AUDIT npp-alloc residual [kgC/site/day]: ', resid_npp_site
+
    ! Update history diagnostics related to Nutrients (if any)
    ! -----------------------------------------------------------------------------
    select case(hlm_parteh_mode)
@@ -800,6 +827,13 @@ contains
 
     call FluxIntoLitterPools(currentsite, bc_in, bc_out)
 
+    ! AUDIT: herbivory closure (implied use_eff should equal grazing_carbon_use_eff)
+    if(hlm_masterproc==itrue) then
+       write(fates_log(),*) 'AUDIT herb leaf-C removed [kgC]: ', herb_removed_site
+       write(fates_log(),*) 'AUDIT herb atm flux_out   [kgC]: ', site_cmass%herbivory_flux_out
+       write(fates_log(),*) 'AUDIT herb implied use_eff     : ', &
+            1._r8 - site_cmass%herbivory_flux_out / max(herb_removed_site, nearzero)
+    end if
 
     ! Update cohort number.
     ! This needs to happen after the CWD_input and seed_input calculations as they
@@ -816,6 +850,8 @@ contains
        currentPatch => currentPatch%older
    enddo
 
+   ! AUDIT: bracket this routine to confirm the leak originates here
+   call TotalBalanceCheck(currentSite,1022)
 
    return
   end subroutine ed_integrate_state_variables
