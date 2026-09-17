@@ -359,6 +359,7 @@ contains
     use FatesConstantsMod, only : itrue
     use FatesConstantsMod     , only : nearzero
     use EDCanopyStructureMod  , only : canopy_structure
+    use EDParamsMod           , only : landuse_grazing_carbon_use_eff
 
 
     ! !ARGUMENTS:
@@ -432,6 +433,12 @@ contains
     real(r8) :: resid_npp_site    ! AUDIT: NPP-allocation closure residual [kgC/site/day]
     real(r8) :: netalloc_c        ! AUDIT: summed carbon net allocation for a cohort [kgC/plant]
     real(r8) :: herb_removed_site ! AUDIT: total leaf C removed by grazing [kgC/site/day]
+    real(r8) :: plant_turnover_c  ! AUDIT: cohort C turnover routed to litter [kgC/site/day]
+    real(r8) :: plant_mort_c      ! AUDIT: dead-plant C (incl. logging) [kgC/site/day]
+    real(r8) :: herb_litter_c     ! AUDIT: herbivory C routed to litter [kgC/site/day]
+    real(r8) :: litter_credit_c   ! AUDIT: C credited to litter *_in pools [kgC/site/day]
+    real(r8) :: plant_c_live      ! AUDIT: live C of a single plant [kgC/plant]
+    type(litter_type), pointer :: litt ! AUDIT: litter pointer for credit tally
     
     integer,parameter :: leaf_c_id = 1
     
@@ -460,6 +467,9 @@ contains
     ! AUDIT: initialize per-pathway carbon closure accumulators
     resid_npp_site    = 0._r8
     herb_removed_site = 0._r8
+    plant_turnover_c  = 0._r8
+    plant_mort_c      = 0._r8
+    herb_litter_c     = 0._r8
 
     currentPatch => currentSite%oldest_patch
     do while(associated(currentPatch))
@@ -713,6 +723,27 @@ contains
           herb_removed_site = herb_removed_site + &
                currentCohort%prt%GetHerbivory(leaf_organ,carbon12_element) * currentCohort%n
 
+          ! AUDIT: plant-side C losses that should be credited to litter this day
+          plant_turnover_c = plant_turnover_c + &
+               ( currentCohort%prt%GetTurnover(leaf_organ,   carbon12_element) + &
+                 currentCohort%prt%GetTurnover(fnrt_organ,   carbon12_element) + &
+                 currentCohort%prt%GetTurnover(sapw_organ,   carbon12_element) + &
+                 currentCohort%prt%GetTurnover(store_organ,  carbon12_element) + &
+                 currentCohort%prt%GetTurnover(struct_organ, carbon12_element) + &
+                 currentCohort%prt%GetTurnover(repro_organ,  carbon12_element) ) * currentCohort%n
+          herb_litter_c = herb_litter_c + &
+               currentCohort%prt%GetHerbivory(leaf_organ,carbon12_element) * &
+               landuse_grazing_carbon_use_eff * currentCohort%n
+          ! dndt<0 for death; the count that dies this day is (-dndt*hlm_freq_day)
+          plant_c_live = currentCohort%prt%GetState(leaf_organ,   carbon12_element) + &
+                         currentCohort%prt%GetState(fnrt_organ,   carbon12_element) + &
+                         currentCohort%prt%GetState(sapw_organ,   carbon12_element) + &
+                         currentCohort%prt%GetState(store_organ,  carbon12_element) + &
+                         currentCohort%prt%GetState(struct_organ, carbon12_element) + &
+                         currentCohort%prt%GetState(repro_organ,  carbon12_element)
+          plant_mort_c = plant_mort_c + &
+               plant_c_live * max(0._r8, -currentCohort%dndt * hlm_freq_day)
+
           ! Update the leaf biophysical rates based on proportion of leaf
           ! mass in the different leaf age classes. Following growth
           ! and turnover, these proportions won't change again. This
@@ -833,6 +864,25 @@ contains
        write(fates_log(),*) 'AUDIT herb atm flux_out   [kgC]: ', site_cmass%herbivory_flux_out
        write(fates_log(),*) 'AUDIT herb implied use_eff     : ', &
             1._r8 - site_cmass%herbivory_flux_out / max(herb_removed_site, nearzero)
+    end if
+
+    ! AUDIT: litter-credit tally (plant-side C losses vs C credited to litter *_in pools)
+    litter_credit_c = 0._r8
+    currentPatch => currentSite%youngest_patch
+    do while(associated(currentPatch))
+       litt => currentPatch%litter(element_pos(carbon12_element))
+       litter_credit_c = litter_credit_c + currentPatch%area * &
+            ( sum(litt%ag_cwd_in) + sum(litt%bg_cwd_in) + &
+              sum(litt%leaf_fines_in) + sum(litt%root_fines_in) )
+       currentPatch => currentPatch%older
+    enddo
+    if(hlm_masterproc==itrue) then
+       write(fates_log(),*) 'AUDIT plant turnover  [kgC/site/day]: ', plant_turnover_c
+       write(fates_log(),*) 'AUDIT plant mortality [kgC/site/day]: ', plant_mort_c
+       write(fates_log(),*) 'AUDIT herb->litter    [kgC/site/day]: ', herb_litter_c
+       write(fates_log(),*) 'AUDIT litter *_in credit [kgC/site/day]: ', litter_credit_c
+       write(fates_log(),*) 'AUDIT litter-credit residual [kgC/site/day]: ', &
+            (plant_turnover_c + plant_mort_c + herb_litter_c) - litter_credit_c
     end if
 
     ! Update cohort number.
