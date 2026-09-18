@@ -159,7 +159,6 @@ contains
     type(fates_patch_type), pointer :: currentPatch
     integer :: el                ! Loop counter for variables 
     integer :: do_patch_dynamics ! for some modes, we turn off patch dynamics
-    real(r8) :: s0_c, tb_c, tl_c, ts_c ! AUDIT: total/biomass/litter/seed C at day start [kgC/site]
 
     !-----------------------------------------------------------------------
 
@@ -173,14 +172,6 @@ contains
        call currentSite%mass_balance(el)%ZeroMassBalFlux()
     end do
     call currentSite%flux_diags%ZeroFluxDiags()
-
-    ! AUDIT: reference carbon stock at day start (fluxes now zero)
-    call SiteMassStock(currentSite,element_pos(carbon12_element),s0_c,tb_c,tl_c,ts_c)
-    ! AUDIT: imbalance inherited from before today (any rank; nonzero => leak is pre day-start)
-    if(abs(s0_c - currentSite%mass_balance(element_pos(carbon12_element))%old_stock) > 1.e-9_r8) &
-         write(fates_log(),*) 'AUDIT inherited (s0-old_stock) [kgC] lat/lon: ', &
-         s0_c - currentSite%mass_balance(element_pos(carbon12_element))%old_stock, &
-         currentSite%lat, currentSite%lon
 
     
     ! Call a routine that simply identifies if logging should occur
@@ -220,9 +211,6 @@ contains
       end if ! SP phenology
     end if
 
-    call audit_bal('post-phenology  ')
-    call TotalBalanceCheck(currentSite,100)
-
 
     if (hlm_use_ed_st3.eq.ifalse.and.hlm_use_sp.eq.ifalse) then   ! Bypass if ST3
        
@@ -236,21 +224,12 @@ contains
           call DailyFireModel(currentSite, bc_in)
        end if
 
-       call audit_bal('post-fire       ')
-       call TotalBalanceCheck(currentSite,101)
-
        ! Calculate disturbance and mortality based on previous timestep vegetation.
        ! disturbance_rates calls logging mortality and other mortalities, Yi Xu
        call disturbance_rates(currentSite, bc_in)
-
-       call audit_bal('post-disturbance')
-       call TotalBalanceCheck(currentSite,102)
        
        ! Integrate state variables from annual rates to daily timestep
        call ed_integrate_state_variables(currentSite, bc_in, bc_out )
-
-       call audit_bal('post-integrate  ')
-       call TotalBalanceCheck(currentSite,103)
        
        ! at this point in the call sequence, if flag to transition_landuse_from_off_to_on was set, unset it as it is no longer needed
        if(currentSite%transition_landuse_from_off_to_on) then
@@ -272,8 +251,6 @@ contains
     ! Reproduction, Recruitment and Cohort Dynamics : controls cohort organization
     !******************************************************************************
 
-    call TotalBalanceCheck(currentSite,104)
-
     if(hlm_use_ed_st3.eq.ifalse.and.hlm_use_sp.eq.ifalse) then
        currentPatch => currentSite%oldest_patch
        do while (associated(currentPatch))
@@ -285,9 +262,6 @@ contains
 
           currentPatch => currentPatch%younger
        enddo
-
-        call audit_bal('post-recruitment')
-        call TotalBalanceCheck(currentSite,1)
 
        currentPatch => currentSite%oldest_patch
        do while (associated(currentPatch))
@@ -310,7 +284,6 @@ contains
          
     end if
 
-    call audit_bal('post-cohortmgmt ')
     call TotalBalanceCheck(currentSite,2)
 
     !*********************************************************************************
@@ -329,7 +302,6 @@ contains
 
        call spawn_patches(currentSite, bc_in)
 
-       call audit_bal('post-spawn      ')
        call TotalBalanceCheck(currentSite,3)
 
        ! fuse on the spawned patches.
@@ -345,7 +317,6 @@ contains
        end if
 
        ! SP has changes in leaf carbon but we don't expect them to be in balance.
-       call audit_bal('post-fusepatch  ')
        call TotalBalanceCheck(currentSite,4)
 
        ! kill patches that are too small
@@ -355,25 +326,6 @@ contains
     ! Final instantaneous mass balance check
     call audit_bal('post-termpatch  ')
     call TotalBalanceCheck(currentSite,5)
-
-  contains
-
-    ! AUDIT: unguarded incremental carbon balance since day start (residual should be ~0)
-    subroutine audit_bal(lbl)
-      character(len=*), intent(in) :: lbl
-      real(r8) :: s_c, tb, tl, ts, fnet, resid
-      type(site_massbal_type), pointer :: scm
-      call SiteMassStock(currentSite,element_pos(carbon12_element),s_c,tb,tl,ts)
-      scm => currentSite%mass_balance(element_pos(carbon12_element))
-      fnet = scm%seed_in + scm%net_root_uptake + scm%gpp_acc + scm%flux_generic_in + scm%patch_resize_err &
-           - sum(scm%wood_product_harvest(:)) - sum(scm%wood_product_landusechange(:)) &
-           - sum(scm%burn_flux_to_atm(:)) - scm%seed_out - scm%flux_generic_out &
-           - scm%frag_out - scm%aresp_acc - scm%herbivory_flux_out
-      resid = (s_c - s0_c) - fnet
-      ! Print on any rank when the running balance drifts (catches the offending site)
-      if(abs(resid) > 1.e-9_r8) write(fates_log(),*) 'AUDIT resid '//lbl//' [kgC] lat/lon: ', &
-           resid, currentSite%lat, currentSite%lon
-    end subroutine audit_bal
 
   end subroutine ed_ecosystem_dynamics
 
@@ -396,7 +348,6 @@ contains
     use FatesConstantsMod, only : itrue
     use FatesConstantsMod     , only : nearzero
     use EDCanopyStructureMod  , only : canopy_structure
-    use EDParamsMod           , only : landuse_grazing_carbon_use_eff
 
 
     ! !ARGUMENTS:
@@ -466,36 +417,10 @@ contains
     real(r8) :: total_c0
     real(r8) :: nc_carbon
     real(r8) :: cc_carbon
-
-    real(r8) :: herb_removed_site ! AUDIT: total leaf C removed by grazing [kgC/site/day]
-    real(r8) :: plant_turnover_c  ! AUDIT: cohort C turnover routed to litter [kgC/site/day]
-    real(r8) :: plant_mort_c      ! AUDIT: dead-plant C (incl. logging) [kgC/site/day]
-    real(r8) :: herb_litter_c     ! AUDIT: herbivory C routed to litter [kgC/site/day]
-    real(r8) :: litter_credit_c   ! AUDIT: C credited to litter *_in pools [kgC/site/day]
-    real(r8) :: plant_c_live      ! AUDIT: live C of a single plant [kgC/plant]
-    type(litter_type), pointer :: litt ! AUDIT: litter pointer for credit tally
-    real(r8) :: bio0_c, seed0_c, litt0_c ! AUDIT: carbon sub-stocks at routine entry [kgC/site]
-    real(r8) :: bio1_c, seed1_c, litt1_c ! AUDIT: carbon sub-stocks at routine exit [kgC/site]
-    real(r8) :: tot_c                    ! AUDIT: total stock scratch [kgC/site]
-    real(r8) :: gpp0_c, aresp0_c, frag0_c, herb0_c ! AUDIT: flux accumulators at entry [kgC/site]
-    real(r8) :: seedin0_c, seedout0_c, nru0_c      ! AUDIT: flux accumulators at entry [kgC/site]
-    real(r8) :: flux_net_c, stock_net_c            ! AUDIT: routine-local flux and stock change [kgC/site/day]
     
     integer,parameter :: leaf_c_id = 1
     
     !-----------------------------------------------------------------------
-
-    ! AUDIT: bracket this routine to confirm the leak originates here
-    call TotalBalanceCheck(currentSite,1021)
-    site_cmass => currentSite%mass_balance(element_pos(carbon12_element))
-    call SiteMassStock(currentSite,element_pos(carbon12_element),tot_c,bio0_c,litt0_c,seed0_c)
-    gpp0_c    = site_cmass%gpp_acc
-    aresp0_c  = site_cmass%aresp_acc
-    frag0_c   = site_cmass%frag_out
-    herb0_c   = site_cmass%herbivory_flux_out
-    seedin0_c = site_cmass%seed_in
-    seedout0_c= site_cmass%seed_out
-    nru0_c    = site_cmass%net_root_uptake
 
     current_fates_landuse_state_vector = currentSite%get_current_landuse_statevector()
 
@@ -510,12 +435,6 @@ contains
     ! prior to the growth sequence, where reproductive
     ! tissues are allocated
     call UpdateRecruitStoich(currentSite)
-
-    ! AUDIT: initialize per-pathway carbon closure accumulators
-    herb_removed_site = 0._r8
-    plant_turnover_c  = 0._r8
-    plant_mort_c      = 0._r8
-    herb_litter_c     = 0._r8
 
     currentPatch => currentSite%oldest_patch
     do while(associated(currentPatch))
@@ -757,30 +676,6 @@ contains
           
           call currentCohort%prt%CheckMassConservation(ft,5)
 
-          herb_removed_site = herb_removed_site + &
-               currentCohort%prt%GetHerbivory(leaf_organ,carbon12_element) * currentCohort%n
-
-          ! AUDIT: plant-side C losses that should be credited to litter this day
-          plant_turnover_c = plant_turnover_c + &
-               ( currentCohort%prt%GetTurnover(leaf_organ,   carbon12_element) + &
-                 currentCohort%prt%GetTurnover(fnrt_organ,   carbon12_element) + &
-                 currentCohort%prt%GetTurnover(sapw_organ,   carbon12_element) + &
-                 currentCohort%prt%GetTurnover(store_organ,  carbon12_element) + &
-                 currentCohort%prt%GetTurnover(struct_organ, carbon12_element) + &
-                 currentCohort%prt%GetTurnover(repro_organ,  carbon12_element) ) * currentCohort%n
-          herb_litter_c = herb_litter_c + &
-               currentCohort%prt%GetHerbivory(leaf_organ,carbon12_element) * &
-               landuse_grazing_carbon_use_eff * currentCohort%n
-          ! dndt<0 for death; the count that dies this day is (-dndt*hlm_freq_day)
-          plant_c_live = currentCohort%prt%GetState(leaf_organ,   carbon12_element) + &
-                         currentCohort%prt%GetState(fnrt_organ,   carbon12_element) + &
-                         currentCohort%prt%GetState(sapw_organ,   carbon12_element) + &
-                         currentCohort%prt%GetState(store_organ,  carbon12_element) + &
-                         currentCohort%prt%GetState(struct_organ, carbon12_element) + &
-                         currentCohort%prt%GetState(repro_organ,  carbon12_element)
-          plant_mort_c = plant_mort_c + &
-               plant_c_live * max(0._r8, -currentCohort%dndt * hlm_freq_day)
-
           ! Update the leaf biophysical rates based on proportion of leaf
           ! mass in the different leaf age classes. Following growth
           ! and turnover, these proportions won't change again. This
@@ -891,17 +786,6 @@ contains
 
     call FluxIntoLitterPools(currentsite, bc_in, bc_out)
 
-    ! AUDIT: litter-credit tally (plant-side C losses vs C credited to litter *_in pools)
-    litter_credit_c = 0._r8
-    currentPatch => currentSite%youngest_patch
-    do while(associated(currentPatch))
-       litt => currentPatch%litter(element_pos(carbon12_element))
-       litter_credit_c = litter_credit_c + currentPatch%area * &
-            ( sum(litt%ag_cwd_in) + sum(litt%bg_cwd_in) + &
-              sum(litt%leaf_fines_in) + sum(litt%root_fines_in) )
-       currentPatch => currentPatch%older
-    enddo
-
     ! Update cohort number.
     ! This needs to happen after the CWD_input and seed_input calculations as they
     ! assume the pre-mortality currentCohort%n.
@@ -916,47 +800,6 @@ contains
        enddo
        currentPatch => currentPatch%older
    enddo
-
-   ! AUDIT: sub-stock changes over the routine (localizes where the residual lands)
-   call SiteMassStock(currentSite,element_pos(carbon12_element),tot_c,bio1_c,litt1_c,seed1_c)
-   ! AUDIT: routine-local mass balance (all carbon terms visible, residual = leak)
-   stock_net_c = (bio1_c-bio0_c) + (litt1_c-litt0_c) + (seed1_c-seed0_c)
-   flux_net_c  = (site_cmass%gpp_acc   - gpp0_c) &
-               + (site_cmass%seed_in   - seedin0_c) &
-               + (site_cmass%net_root_uptake - nru0_c) &
-               - (site_cmass%aresp_acc - aresp0_c) &
-               - (site_cmass%frag_out  - frag0_c) &
-               - (site_cmass%herbivory_flux_out - herb0_c) &
-               - (site_cmass%seed_out  - seedout0_c)
-   if(hlm_masterproc==itrue .or. abs(stock_net_c - flux_net_c) > 1.e-9_r8) then
-      write(fates_log(),*) 'AUDIT lat/lon: ', currentSite%lat, currentSite%lon
-      write(fates_log(),*) 'AUDIT d(biomass) [kgC/site/day]: ', bio1_c - bio0_c
-      write(fates_log(),*) 'AUDIT d(litter)  [kgC/site/day]: ', litt1_c - litt0_c
-      write(fates_log(),*) 'AUDIT d(seed)    [kgC/site/day]: ', seed1_c - seed0_c
-      write(fates_log(),*) 'AUDIT d(gpp)     [kgC/site/day]: ', site_cmass%gpp_acc - gpp0_c
-      write(fates_log(),*) 'AUDIT d(aresp)   [kgC/site/day]: ', site_cmass%aresp_acc - aresp0_c
-      write(fates_log(),*) 'AUDIT d(frag)    [kgC/site/day]: ', site_cmass%frag_out - frag0_c
-      write(fates_log(),*) 'AUDIT d(seed_in) [kgC/site/day]: ', site_cmass%seed_in - seedin0_c
-      write(fates_log(),*) 'AUDIT d(seed_out)[kgC/site/day]: ', site_cmass%seed_out - seedout0_c
-      write(fates_log(),*) 'AUDIT stock_net  [kgC/site/day]: ', stock_net_c
-      write(fates_log(),*) 'AUDIT flux_net   [kgC/site/day]: ', flux_net_c
-      write(fates_log(),*) 'AUDIT routine residual [kgC/site/day]: ', stock_net_c - flux_net_c
-      ! herbivory closure (printed on the offending rank, not just masterproc)
-      write(fates_log(),*) 'AUDIT herb leaf-C removed [kgC/site/day]: ', herb_removed_site
-      write(fates_log(),*) 'AUDIT herb atm flux_out   [kgC/site/day]: ', site_cmass%herbivory_flux_out - herb0_c
-      write(fates_log(),*) 'AUDIT herb implied use_eff              : ', &
-           1._r8 - (site_cmass%herbivory_flux_out - herb0_c) / max(herb_removed_site, nearzero)
-      ! turnover/mortality -> litter crediting closure
-      write(fates_log(),*) 'AUDIT plant turnover  [kgC/site/day]: ', plant_turnover_c
-      write(fates_log(),*) 'AUDIT plant mortality [kgC/site/day]: ', plant_mort_c
-      write(fates_log(),*) 'AUDIT herb->litter    [kgC/site/day]: ', herb_litter_c
-      write(fates_log(),*) 'AUDIT litter *_in credit [kgC/site/day]: ', litter_credit_c
-      write(fates_log(),*) 'AUDIT litter-credit residual [kgC/site/day]: ', &
-           (plant_turnover_c + plant_mort_c + herb_litter_c) - litter_credit_c
-   end if
-
-   ! AUDIT: bracket this routine to confirm the leak originates here
-   call TotalBalanceCheck(currentSite,1022)
 
    return
   end subroutine ed_integrate_state_variables
