@@ -2065,6 +2065,7 @@ contains
     use EDTypesMod, only : area
     use FatesInterfaceTypesMod, only : hlm_seeddisp_cadence
     use FatesInterfaceTypesMod, only : fates_dispersal_cadence_none
+    use FatesInterfaceTypesMod, only : hlm_masterproc
     !
     ! !ARGUMENTS
     type(ed_site_type), intent(inout), target  :: currentSite
@@ -2090,6 +2091,10 @@ contains
     real(r8) :: nocomp_seed_scaling    ! scalar to handle case for nocomp_seed_localization
     real(r8) :: seed_supply            ! external seed rain scalar to handle case for nocomp_seed_localization
     real(r8) :: nocomp_patch_areas(0:numpft) ! vector of the total patch areas for each nocomp PFT
+    logical  :: is_orphan              ! PFT has no valid destination seed pool this timestep
+    real(r8) :: orphan_seed_local      ! non-dispersed seed of an orphaned PFT [kg/site/day]
+    integer  :: dcmpy                  ! decomposability pool index
+    real(r8) :: dcmpy_frac             ! fraction of mass sent to each decomposability pool
 
     ! If the dispersal kernel is not turned on, keep the dispersal fraction at zero
     site_disp_frac(:) = 0._r8
@@ -2229,6 +2234,34 @@ contains
 
           currentPatch => currentPatch%younger
        enddo seed_in_loop
+
+       ! Orphaned seed: a PFT can shed reproductive mass (via PRTReproRelease) even
+       ! after it was fused/removed last timestep, leaving no valid destination seed
+       ! pool. Route its non-dispersed portion to fine litter so mass is conserved.
+       do pft = 1,numpft
+          is_orphan = (currentSite%use_this_pft(pft) /= itrue)
+          if (nocomp_seed_localization .and. hlm_use_nocomp .eq. itrue) then
+             is_orphan = is_orphan .or. (nocomp_patch_areas(pft) <= nearzero)
+          end if
+
+          if (is_orphan .and. site_seed_rain(pft) > nearzero) then
+             orphan_seed_local = site_seed_rain(pft) * (1.0_r8 - site_disp_frac(pft)) ! [kg/site/day]
+
+             currentPatch => currentSite%oldest_patch
+             do while (associated(currentPatch))
+                litt => currentPatch%litter(el)
+                do dcmpy = 1,ndcmpy
+                   dcmpy_frac = GetDecompyFrac(pft,leaf_organ,dcmpy)
+                   ! [kg/site/day] -> [kg/m2/day]; area-weighted so summed input equals orphan_seed_local
+                   litt%leaf_fines_in(dcmpy) = litt%leaf_fines_in(dcmpy) + &
+                        orphan_seed_local * dcmpy_frac / area
+                end do
+                currentPatch => currentPatch%younger
+             end do
+
+             seed_litter_deliv = seed_litter_deliv + orphan_seed_local
+          end if
+       end do
 
        ! Determine the total site-level seed output for the current element and update the seed_out mass
        ! for each element loop since the site_seed_rain is resent and updated for each element loop iteration

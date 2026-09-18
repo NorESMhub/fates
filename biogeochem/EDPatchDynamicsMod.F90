@@ -3461,12 +3461,12 @@ contains
 
              if ( .not. gotfused ) then
                 !! somehow didn't find a patch to fuse with.
-                warn_msg = 'small nocomp patch wasnt able to find '// &
-                           'another patch to fuse with. '// &
-                           'nocomp pft: '//trim(I2S(currentPatch%nocomp_pft_label))// &
-                           'lu label: '//trim(I2S(currentPatch%land_use_label))// &
-                           'area: '//trim(N2S(currentPatch%area))
-                call FatesWarn(warn_msg,index=5)
+                ! warn_msg = 'small nocomp patch wasnt able to find '// &
+                !            'another patch to fuse with. '// &
+                !            'nocomp pft: '//trim(I2S(currentPatch%nocomp_pft_label))// &
+                !            'lu label: '//trim(I2S(currentPatch%land_use_label))// &
+                !            'area: '//trim(N2S(currentPatch%area))
+                ! call FatesWarn(warn_msg,index=5)
              endif
 
           else nocomp_if
@@ -3569,34 +3569,34 @@ contains
        end if
 
        if(count_cycles > max_cycles) then
-          write(fates_log(),*) 'FATES is having difficulties fusing very small patches.'
-          write(fates_log(),*) 'It is possible that a either a secondary or primary'
-          write(fates_log(),*) 'patch has become the only patch of its kind, and it is'
-          write(fates_log(),*) 'is very very small. You can test your luck by'
-          write(fates_log(),*) 'disabling the endrun statement following this message.'
-          write(fates_log(),*) 'FATES may or may not continue to operate within error'
-          write(fates_log(),*) 'tolerances, but will generate another fail if it does not.'
-          write(fates_log(),*) 'otherwise, dumping some diagnostics.'
-          write(fates_log(),*) currentPatch%area, currentPatch%nocomp_pft_label, currentPatch%land_use_label
-          call dump_site(currentSite)
+          ! write(fates_log(),*) 'FATES is having difficulties fusing very small patches.'
+          ! write(fates_log(),*) 'It is possible that a either a secondary or primary'
+          ! write(fates_log(),*) 'patch has become the only patch of its kind, and it is'
+          ! write(fates_log(),*) 'is very very small. You can test your luck by'
+          ! write(fates_log(),*) 'disabling the endrun statement following this message.'
+          ! write(fates_log(),*) 'FATES may or may not continue to operate within error'
+          ! write(fates_log(),*) 'tolerances, but will generate another fail if it does not.'
+          ! write(fates_log(),*) 'otherwise, dumping some diagnostics.'
+          ! write(fates_log(),*) currentPatch%area, currentPatch%nocomp_pft_label, currentPatch%land_use_label
+       !   call dump_site(currentSite)
 
-          write(fates_log(),*) 'currentSite%area_bareground', currentSite%area_bareground
-          write(fates_log(),*) 'currentSite%area_pft(:,:)', currentSite%area_pft(:,:)
+        !  write(fates_log(),*) 'currentSite%area_bareground', currentSite%area_bareground
+        !  write(fates_log(),*) 'currentSite%area_pft(:,:)', currentSite%area_pft(:,:)
           patchpointer => currentSite%youngest_patch
           do while(associated(patchpointer))
-             write(fates_log(),*) patchpointer%area, patchpointer%nocomp_pft_label, patchpointer%land_use_label
+         !    write(fates_log(),*) patchpointer%area, patchpointer%nocomp_pft_label, patchpointer%land_use_label
              patchpointer => patchpointer%older
           end do
           state_vector_internal = currentSite%get_current_landuse_statevector()
-          write(fates_log(),*) 'current landuse state vector: ', state_vector_internal
-          write(fates_log(),*) 'current landuse state vector (not including bare gruond): ', state_vector_internal/(1._r8-currentSite%area_bareground)
+         ! write(fates_log(),*) 'current landuse state vector: ', state_vector_internal
+         ! write(fates_log(),*) 'current landuse state vector (not including bare gruond): ', state_vector_internal/(1._r8-currentSite%area_bareground)
           call GetLUHStatedata(bc_in, state_vector_driver)
-          write(fates_log(),*) 'driver data landuse state vector: ', state_vector_driver
-          write(fates_log(),*) 'min_allowed_landuse_fraction: ', currentSite%min_allowed_landuse_fraction
-          write(fates_log(),*) 'landuse_vector_gt_min: ', currentSite%landuse_vector_gt_min
-          do i_landuse = 1, n_landuse_cats
-             write(fates_log(),*) 'trans matrix from: ', i_landuse, currentSite%landuse_transition_matrix(i_landuse,:)
-          end do
+          !write(fates_log(),*) 'driver data landuse state vector: ', state_vector_driver
+          !write(fates_log(),*) 'min_allowed_landuse_fraction: ', currentSite%min_allowed_landuse_fraction
+          !write(fates_log(),*) 'landuse_vector_gt_min: ', currentSite%landuse_vector_gt_min
+         ! do i_landuse = 1, n_landuse_cats
+         !    write(fates_log(),*) 'trans matrix from: ', i_landuse, currentSite%landuse_transition_matrix(i_landuse,:)
+         ! end do
 
           if ( (state_vector_driver(currentPatch%land_use_label) .lt. currentSite%min_allowed_landuse_fraction ) .or. &
                (state_vector_internal(currentPatch%land_use_label) .lt. currentSite%min_allowed_landuse_fraction ) ) then
@@ -3604,7 +3604,7 @@ contains
              ! try fusing all of the patches with this land use label into the largest patch on the site.
              land_use_type_to_remove = currentPatch%land_use_label
 
-             write(fates_log(),*) 'removing all patches with land use type ',land_use_type_to_remove
+          !   write(fates_log(),*) 'removing all patches with land use type ',land_use_type_to_remove
 
              ! first find the largest patch on the site
              patchpointer => currentSite%youngest_patch

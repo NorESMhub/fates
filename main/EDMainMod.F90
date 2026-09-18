@@ -227,10 +227,10 @@ contains
        ! Calculate disturbance and mortality based on previous timestep vegetation.
        ! disturbance_rates calls logging mortality and other mortalities, Yi Xu
        call disturbance_rates(currentSite, bc_in)
-
+       
        ! Integrate state variables from annual rates to daily timestep
        call ed_integrate_state_variables(currentSite, bc_in, bc_out )
-
+       
        ! at this point in the call sequence, if flag to transition_landuse_from_off_to_on was set, unset it as it is no longer needed
        if(currentSite%transition_landuse_from_off_to_on) then
           currentSite%transition_landuse_from_off_to_on = .false.
@@ -262,8 +262,6 @@ contains
 
           currentPatch => currentPatch%younger
        enddo
-
-       call TotalBalanceCheck(currentSite,1)
 
        currentPatch => currentSite%oldest_patch
        do while (associated(currentPatch))
@@ -326,6 +324,7 @@ contains
     end if
 
     ! Final instantaneous mass balance check
+    call audit_bal('post-termpatch  ')
     call TotalBalanceCheck(currentSite,5)
 
   end subroutine ed_ecosystem_dynamics
@@ -429,9 +428,6 @@ contains
 
     ! Patch level biomass are required for C-based harvest
     call get_harvestable_carbon(currentSite, bc_in%site_area, bc_in%hlm_harvest_catnames, harvestable_forest_c)
-
-    ! Set a pointer to this sites carbon12 mass balance
-    site_cmass => currentSite%mass_balance(element_pos(carbon12_element))
 
     ! This call updates the assessment of the total stoichiometry
     ! for a new recruit, based on its PFT and the L2FR of
@@ -790,7 +786,6 @@ contains
 
     call FluxIntoLitterPools(currentsite, bc_in, bc_out)
 
-
     ! Update cohort number.
     ! This needs to happen after the CWD_input and seed_input calculations as they
     ! assume the pre-mortality currentCohort%n.
@@ -805,7 +800,6 @@ contains
        enddo
        currentPatch => currentPatch%older
    enddo
-
 
    return
   end subroutine ed_integrate_state_variables
@@ -1081,6 +1075,8 @@ contains
                 write(fates_log(),*) 'root litter (by layer): ',sum(litt%root_fines,dim=1)
                 write(fates_log(),*) 'land_use_label: ',currentPatch%land_use_label
                 write(fates_log(),*) 'use_this_pft: ', currentSite%use_this_pft(:)
+                write(fates_log(),*) 'land_use_label, ncpft: ',currentPatch%land_use_label,&
+                     currentPatch%nocomp_pft_label
                 if(print_cohorts)then
                     write(fates_log(),*) '---- Biomass by cohort and organ -----'
                     currentCohort => currentPatch%tallest
