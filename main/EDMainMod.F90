@@ -348,6 +348,7 @@ contains
     use FatesInterfaceTypesMod, only : hlm_use_cohort_age_tracking
     use FatesConstantsMod, only : itrue
     use FatesConstantsMod     , only : nearzero
+    use FatesConstantsMod        , only : rsnbl_math_prec
     use EDCanopyStructureMod  , only : canopy_structure
 
 
@@ -401,6 +402,8 @@ contains
     real(r8) :: repro_c
     real(r8) :: total_c
     real(r8) :: store_c
+    real(r8) :: alive_c
+    real(r8) :: leaf_c_frac
 
     real(r8) :: cc_leaf_c
     real(r8) :: cc_fnrt_c
@@ -554,9 +557,16 @@ contains
              
 
              ! allow herbivores to graze
+             call currentCohort%prt%GetBiomass(carbon12_element, &
+                  sapw_c, struct_c, leaf_c, fnrt_c, store_c, repro_c, alive_c, total_c)
+             if (total_c > rsnbl_math_prec) then
+                leaf_c_frac = leaf_c/total_c
+             else
+                leaf_c_frac = 0._r8
+             endif
              
              call FatesGrazing(currentCohort%prt, ft, currentPatch%land_use_label, currentCohort%height,currentCohort%npp_acc, &
-                  currentCohort%treelai)
+                  currentCohort%treelai, leaf_c_frac)
 
              ! Conduct Maintenance Turnover (parteh)
              if(debug) call currentCohort%prt%CheckMassConservation(ft,3)

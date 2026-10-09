@@ -451,9 +451,9 @@ contains
     
   !----------------------------------------------------------------------------------------------------
 
-  subroutine FatesGrazing(prt, ft, land_use_label, height,npp_acc, lai)
+  subroutine FatesGrazing(prt, ft, land_use_label, height,npp_acc, lai, leaf_store_frac)
 
-    use PRTGenericMod,    only : leaf_organ
+    use PRTGenericMod,    only : leaf_organ, store_organ
     use PRTGenericMod,    only : prt_vartypes
     use PRTLossFluxesMod, only : PRTHerbivoryLosses
     use EDParamsMod     , only : landuse_grazing_rate
@@ -470,6 +470,7 @@ contains
     real(r8), intent(in) :: height
     real(r8), intent(in) :: npp_acc
     real(r8), intent(in) :: lai
+    real(r8), intent(in) :: leaf_store_frac ! fraction of leaf storage to total
 
     real(r8) :: grazing_rate    ! rate of grazing (or browsing) of leaf tissue [day -1]
     real(r8) :: crown_depth
@@ -493,7 +494,8 @@ contains
        endif
 
        call PRTHerbivoryLosses(prt, leaf_organ, grazing_rate)
-
+       call PRTHerbivoryLosses(prt, store_organ, grazing_rate * leaf_store_frac)
+       
     end if
     
   end subroutine FatesGrazing

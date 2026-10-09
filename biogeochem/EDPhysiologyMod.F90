@@ -2964,7 +2964,7 @@ contains
     integer  :: numlevsoil        ! Actual number of soil layers
 
     real(r8) :: SF_val_CWD_frac_adj(4) !SF_val_CWD_frac adjusted based on cohort dbh
-    real(r8) :: leaf_herbivory  ! leaf that is eaten by grazers [kg]
+    real(r8) :: herbivory  ! leaf that is eaten by grazers [kg]
     real(r8) :: herbivory_element_use_efficiency   ! fraction of grazed biomass that is returned to litter pool versus atmosphere
     !----------------------------------------------------------------------
 
@@ -2995,6 +2995,7 @@ contains
 
     currentCohort => currentPatch%shortest
     do while(associated(currentCohort))
+       herbivory = 0.0_r8
 
        pft = currentCohort%pft
        call set_root_fraction(currentSite%rootfrac_scr, pft, currentSite%zi_soil, &
@@ -3010,7 +3011,9 @@ contains
        fnrt_m          = currentCohort%prt%GetState(fnrt_organ,element_id)
        repro_m         = currentCohort%prt%GetState(repro_organ,element_id)
 
-       leaf_herbivory  = currentCohort%prt%GetHerbivory(leaf_organ, element_id)
+       herbivory  = currentCohort%prt%GetHerbivory(leaf_organ, element_id)
+       ! we also graze storage now.
+       herbivory  = herbivory + currentCohort%prt%GetHerbivory(store_organ, element_id)
 
        if (prt_params%woody(currentCohort%pft) == itrue) then
           ! Assumption: for woody plants fluxes from deadwood and sapwood go together in CWD pool
@@ -3057,7 +3060,7 @@ contains
           dcmpy_frac = GetDecompyFrac(pft,leaf_organ,dcmpy)
           litt%leaf_fines_in(dcmpy) = litt%leaf_fines_in(dcmpy) + &
                (leaf_m_turnover+repro_m_turnover + &
-               leaf_herbivory * herbivory_element_use_efficiency) * &
+               herbivory * herbivory_element_use_efficiency) * &
                plant_dens * dcmpy_frac
 
           dcmpy_frac = GetDecompyFrac(pft,fnrt_organ,dcmpy)
@@ -3075,7 +3078,7 @@ contains
 
        site_mass%herbivory_flux_out = &
             site_mass%herbivory_flux_out + &
-            leaf_herbivory * (1._r8 - herbivory_element_use_efficiency) * currentCohort%n
+            herbivory * (1._r8 - herbivory_element_use_efficiency) * currentCohort%n
 
 
        ! Assumption: turnover from deadwood and sapwood are lumped together in CWD pool
