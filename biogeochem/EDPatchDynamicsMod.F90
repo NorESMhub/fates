@@ -685,6 +685,16 @@ contains
                                          num_swb, numpft, currentSite%nlevsoil, hlm_current_tod,              &
                                          hlm_regeneration_model)
 
+                      if(site_areadis < rsnbl_math_prec*area_site) then
+                       write(fates_log(),*) 'spawn_patches: tiny patch CREATED'
+                       write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
+                       write(fates_log(),*) 'disturbance: ',i_disturbance_type,' nocomp pft: ',i_nocomp_pft
+                       write(fates_log(),*) 'donor/receiver landuse: ',i_donorpatch_landuse_type, &
+                          i_landusechange_receiverpatchlabel
+                       write(fates_log(),*) 'new area: ',site_areadis,' diagnostic area threshold: ', &
+                          rsnbl_math_prec*area_site,' nearzero: ',nearzero
+                      end if
+
                    ! Initialize the litter pools to zero, these
                    ! pools will be populated by looping over the existing patches
                    ! and transfering in mass
@@ -806,6 +816,17 @@ contains
                             ! area modified number density into the new patch, and apply survivorship.
                             ! -------------------------------------------------------------------------
 
+                              if(site_areadis < rsnbl_math_prec*area_site) then
+                               write(fates_log(),*) 'spawn_patches: tiny patch transfer BEFORE'
+                               write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
+                               write(fates_log(),*) 'donor patchno: ',currentPatch%patchno, &
+                                  ' disturbance: ',i_disturbance_type
+                               write(fates_log(),*) 'donor/receiver landuse: ',currentPatch%land_use_label, &
+                                  newPatch%land_use_label,' nocomp pft: ',currentPatch%nocomp_pft_label
+                               write(fates_log(),*) 'donor/receiver area: ',currentPatch%area,newPatch%area
+                               write(fates_log(),*) 'transferred area: ',patch_site_areadis, &
+                                  ' fraction: ',patch_site_areadis/currentPatch%area
+                              end if
                             currentCohort => currentPatch%shortest
                             cohortloop: do while(associated(currentCohort))
 
@@ -828,6 +849,12 @@ contains
                                ! nc is the new cohort that goes in the disturbed patch (newPatch)... currentCohort
                                ! is the curent cohort that stays in the donor patch (currentPatch)
                                call currentCohort%Copy(nc)
+
+                               if(site_areadis < rsnbl_math_prec*area_site) then
+                                  write(fates_log(),*) 'spawn_patches: cohort BEFORE pft/layer: ', &
+                                       currentCohort%pft,currentCohort%canopy_layer
+                                  write(fates_log(),*) 'cohort n/c_area: ',currentCohort%n,currentCohort%c_area
+                               end if
 
                                !this is the case as the new patch probably doesn't have a closed canopy, and
                                ! even if it does, that will be sorted out in canopy_structure.
@@ -1332,6 +1359,12 @@ contains
                                   call endrun(msg=errMsg(sourcefile, __LINE__))
                                end select disttype_case    ! Select disturbance mode
 
+                               if(site_areadis < rsnbl_math_prec*area_site) then
+                                  write(fates_log(),*) 'spawn_patches: cohort AFTER pft: ',currentCohort%pft
+                                  write(fates_log(),*) 'donor/receiver n: ',currentCohort%n,nc%n
+                                  write(fates_log(),*) 'donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
+                               end if
+
                                ! if some plants in the new temporary cohort survived the transfer to the new patch,
                                ! then put the cohort into the linked list.
                                cohort_n_gt_zero: if (nc%n > 0.0_r8) then
@@ -1356,6 +1389,11 @@ contains
                             !update area of donor patch
                             oldarea = currentPatch%area
                             currentPatch%area = currentPatch%area - patch_site_areadis
+
+                            if(site_areadis < rsnbl_math_prec*area_site) then
+                               write(fates_log(),*) 'spawn_patches: tiny patch transfer AFTER donor area: ',currentPatch%area
+                               write(fates_log(),*) 'donor area subtraction unchanged: ',currentPatch%area==oldarea
+                            end if
 
                             ! for all disturbance rates that haven't been resolved yet, increase their amount so that
                             ! they are the same amount of gridcell-scale disturbance relative to the original patch size
@@ -1719,6 +1757,18 @@ contains
     do while(associated(currentPatch))
        currentPatch%disturbance_rates(:) = 0._r8
        currentPatch%fract_ldist_not_harvested = 0._r8
+       if(currentPatch%area < rsnbl_math_prec*area_site) then
+          write(fates_log(),*) 'spawn_patches: tiny patch EXIT'
+          write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
+          write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+          write(fates_log(),*) 'patch area: ',currentPatch%area
+          currentCohort => currentPatch%shortest
+          do while(associated(currentCohort))
+             write(fates_log(),*) 'cohort pft/n/cached c_area: ', &
+                  currentCohort%pft,currentCohort%n,currentCohort%c_area
+             currentCohort => currentCohort%taller
+          end do
+       end if
        currentPatch => currentPatch%younger
     end do
 
@@ -1745,12 +1795,25 @@ contains
     type (fates_cohort_type), pointer :: currentCohort
     integer  :: pft
     real(r8) :: temp_area
+   logical :: log_small_split
 
     temp_area = 0._r8
     if (present(area_to_remove)) then
        temp_area = area_to_remove
     else
        temp_area = currentPatch%area - (currentPatch%area * fraction_to_keep)
+    end if
+
+    log_small_split = min(temp_area,currentPatch%area-temp_area) < rsnbl_math_prec*area_site
+    if(log_small_split) then
+       write(fates_log(),*) 'split_patch: tiny split BEFORE'
+       write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' donor patchno: ',currentPatch%patchno
+       write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+       write(fates_log(),*) 'donor area: ',currentPatch%area,' removed area: ',temp_area
+       write(fates_log(),*) 'fraction_to_keep: ',fraction_to_keep,' complement: ',1._r8-fraction_to_keep
+       if(currentPatch%area > 0._r8) then
+          write(fates_log(),*) 'removed area fraction: ',temp_area/currentPatch%area
+       end if
     end if
 
     ! first we need to make the new patch
@@ -1804,11 +1867,21 @@ contains
        ! is the curent cohort that stays in the donor patch (currentPatch)
        call currentCohort%Copy(nc)
 
+             if(log_small_split) then
+           write(fates_log(),*) 'split_patch: cohort BEFORE pft/n/c_area: ', &
+                currentCohort%pft,currentCohort%n,currentCohort%c_area
+             end if
+
        ! Number of members in the new patch
        nc%n = currentCohort%n * (1._r8 - fraction_to_keep)
 
        ! loss of individuals from source patch due to area shrinking
        currentCohort%n = currentCohort%n * fraction_to_keep
+
+       if(log_small_split) then
+          write(fates_log(),*) 'split_patch: cohort AFTER donor/receiver n: ',currentCohort%n,nc%n
+          write(fates_log(),*) 'split_patch: donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
+       end if
 
        call new_patch%InsertCohort(nc)
 
@@ -1821,6 +1894,10 @@ contains
 
     !update area of donor patch
     currentPatch%area = currentPatch%area - temp_area
+
+    if(log_small_split) then
+       write(fates_log(),*) 'split_patch: tiny split AFTER donor/receiver area: ',currentPatch%area,new_patch%area
+    end if
 
   end subroutine split_patch
 
@@ -3419,6 +3496,7 @@ contains
     type(fates_patch_type), pointer :: youngerPatch
     type(fates_patch_type), pointer :: patchpointer
     type(fates_patch_type), pointer :: largest_patch
+   type(fates_cohort_type), pointer :: diagnostic_cohort
     integer, parameter           :: max_cycles = 10  ! After 10 loops through
                                                      ! You should had fused
     integer                      :: count_cycles
@@ -3649,6 +3727,18 @@ contains
              currentPatch => currentSite%youngest_patch
           else
              write(fates_log(),*) 'this isnt because the land use was less than allowed'
+             write(fates_log(),*) 'terminate_patches: unresolved tiny patch RETAINED'
+             write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
+             write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+             write(fates_log(),*) 'area/min_patch_area/min_patch_area_forced: ', &
+                  currentPatch%area,min_patch_area,min_patch_area_forced
+             write(fates_log(),*) 'total_canopy_area (cached): ',currentPatch%total_canopy_area
+             diagnostic_cohort => currentPatch%shortest
+             do while(associated(diagnostic_cohort))
+                write(fates_log(),*) 'cohort pft/layer/n/cached c_area: ',diagnostic_cohort%pft, &
+                     diagnostic_cohort%canopy_layer,diagnostic_cohort%n,diagnostic_cohort%c_area
+                diagnostic_cohort => diagnostic_cohort%taller
+             end do
 
              !call endrun(msg=errMsg(sourcefile, __LINE__))
           
