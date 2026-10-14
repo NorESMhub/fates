@@ -5,7 +5,6 @@ Module FatesTwoStreamUtilsMod
   ! describe the scattering elements from cohort and patch data, and are
   ! used to decompose the scattering elements to return values
   ! at the cohort, or patch-pft scale.
-  use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
   use FatesConstantsMod     , only : r8 => fates_r8
   use FatesConstantsMod     , only : ifalse
   use FatesConstantsMod     , only : itrue
@@ -85,6 +84,7 @@ contains
 
     integer  :: icolmax         ! Column index for each layer with largest area footprint
     real(r8) :: areamax         ! The area footprint of the largest column
+    logical :: normalize_layer
     
     ! its possible that there is more horizontal area taken up by the cohorts
     ! than there is ground, which is simply a result numerical and algorithmic
@@ -152,48 +152,18 @@ contains
          ! LAI and SAI to conserve area)
         
             
-         ! BEGIN PATCH 2STREAM-INPUT
-         if (associated(patch%tallest)) then
-            if (.not. ieee_is_finite(patch%area) .or. &
-                .not. ieee_is_finite(patch%total_canopy_area)) then
-               write(fates_log(),*) 'ConstructRadElements: non-finite geometry', &
-                    site%lat,site%lon,patch%patchno,patch%area,patch%total_canopy_area
-               call endrun(msg=errMsg(sourcefile, __LINE__))
-            end if
-            if (patch%area <= rsnbl_math_prec*area_site .or. &
-                patch%total_canopy_area <= 0._r8) then
-               write(fates_log(),*) 'ConstructRadElements: unresolved patch geometry', &
-                    site%lat,site%lon,patch%patchno,patch%area,patch%total_canopy_area
-               call endrun(msg=errMsg(sourcefile, __LINE__))
-            end if
-         end if
-         ! END PATCH 2STREAM-INPUT
+         ! Use the same positive denominator as the element-filling pass.
          if(patch%total_canopy_area>0._r8)then
             canopy_frac(:) = 0._r8
             cohort => patch%tallest
             do while (associated(cohort))
                ican = cohort%canopy_layer
-               ! BEGIN PATCH 2STREAM-INPUT
-               if (.not. ieee_is_finite(cohort%c_area) .or. cohort%c_area < 0._r8) then
-                  write(fates_log(),*) 'ConstructRadElements: invalid cohort crown area', &
-                       site%lat,site%lon,patch%patchno,cohort%pft,cohort%c_area
-                  call endrun(msg=errMsg(sourcefile, __LINE__))
-               end if
-               ! END PATCH 2STREAM-INPUT
                canopy_frac(ican) = canopy_frac(ican) + cohort%c_area/patch%total_canopy_area
                cohort => cohort%shorter
             enddo
          else
             canopy_frac(:) = 0._r8
          end if
-
-         ! BEGIN PATCH 2STREAM-INPUT
-         if (any(.not. ieee_is_finite(canopy_frac(1:patch%ncl_p)))) then
-            write(fates_log(),*) 'ConstructRadElements: non-finite layer fractions', &
-                 site%lat,site%lon,patch%patchno,canopy_frac(1:patch%ncl_p)
-            call endrun(msg=errMsg(sourcefile, __LINE__))
-         end if
-         ! END PATCH 2STREAM-INPUT
 
          ! Add the air element if the canopy area is not filled
          do ican = 1,patch%ncl_p
@@ -302,6 +272,12 @@ contains
 
          do ican = 1,patch%ncl_p
 
+            ! BEGIN PATCH 2STREAM-NORMALIZATION
+            normalize_layer = patch%area > 0._r8 .and. &
+                 patch%area <= rsnbl_math_prec*area_site .and. &
+                 (canopy_frac(ican)-1._r8) > 0.01_r8
+            ! END PATCH 2STREAM-NORMALIZATION
+
             ! If the canopy is not full, add an air element
             if( (1._r8-canopy_frac(ican))>area_err_thresh ) then
                n_col(ican) = n_col(ican) + 1
@@ -315,7 +291,7 @@ contains
             ! model if so. This should not happen and would most likely be an issue
             ! with the canopy ppa promotion/demotion logic
             ! This is more of a sanity check, so we use a 1% threshold
-            ! BEGIN PATCH 2STREAM-GEOMETRY
+            if(debug .and. .not. normalize_layer)then
                if_very_overfull: if( (canopy_frac(ican)-1._r8)>0.01_r8 ) then
                   write(fates_log(),*) 'One of the fates canopy layers takes up'
                   write(fates_log(),*) 'more than 100% of the area footprint, exceeding a'
@@ -324,7 +300,7 @@ contains
                   write(fates_log(),*) 'canopy layer: ',ican,' canopy_frac:',canopy_frac(ican)
                   call endrun(msg=errMsg(sourcefile, __LINE__))
                end if if_very_overfull
-            ! END PATCH 2STREAM-GEOMETRY
+            end if
             ! If the layer is overfull, remove some from area from
             ! the element with the largest footprint
 
@@ -341,8 +317,8 @@ contains
                end do
 
                ! Test out a simpler way to correct area errors
-               if(do_simple_area_correct) then
-                  if(debug) then
+               if(do_simple_area_correct .or. normalize_layer) then
+                  if(debug .and. .not. normalize_layer) then
                      if((canopy_frac(ican)-1._r8)>0.5_r8*twostr%scelg(ican,icolmax)%area)then
                         write(fates_log(),*) 'An area correction is being applied where '
                         write(fates_log(),*) 'the correction is greater than 50% of the area of the largest donor.'
@@ -367,7 +343,17 @@ contains
                      write(fates_log(),*) 'layer area sum before: ',sum(twostr%scelg(ican,1:n_col(ican))%area)
                   end if
                   ! END DEBUG 2STREAM-TINY-PATCH
-                  twostr%scelg(ican,icolmax)%area = twostr%scelg(ican,icolmax)%area - (canopy_frac(ican)-1._r8)
+                  ! BEGIN PATCH 2STREAM-NORMALIZATION
+                  if (normalize_layer) then
+                     write(fates_log(),*) 'ConstructRadElements: normalizing tiny-patch layer', &
+                          site%lat,site%lon,patch%patchno,ican,canopy_frac(ican)
+                     do icol = 1,n_col(ican)
+                        twostr%scelg(ican,icol)%area = twostr%scelg(ican,icol)%area/canopy_frac(ican)
+                     end do
+                  else
+                     twostr%scelg(ican,icolmax)%area = twostr%scelg(ican,icolmax)%area - (canopy_frac(ican)-1._r8)
+                  end if
+                  ! END PATCH 2STREAM-NORMALIZATION
                   ! BEGIN DEBUG 2STREAM-TINY-PATCH
                   if((canopy_frac(ican)-1._r8)>0.5_r8*areamax) then
                      write(fates_log(),*) 'ConstructRadElements: anomalous area correction AFTER'

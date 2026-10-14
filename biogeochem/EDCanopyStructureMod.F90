@@ -5,7 +5,6 @@ module EDCanopyStructureMod
   ! understorey or overstorey. This is obviosuly far too complicated for it's own good
   ! =====================================================================================
 
-  use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
   use FatesConstantsMod     , only : r8 => fates_r8
   use FatesConstantsMod     , only : itrue, ifalse
   use FatesConstantsMod     , only : tinyr8
@@ -968,9 +967,16 @@ contains
               end if
            end if
 
-          ! BEGIN PATCH 2STREAM-GEOMETRY
-          call CheckCanopyFootprint(currentPatch)
-          ! END PATCH 2STREAM-GEOMETRY
+          if ( currentPatch%total_canopy_area>currentPatch%area ) then
+             if ( currentPatch%total_canopy_area-currentPatch%area > 0.001_r8 ) then
+                write(fates_log(),*) 'FATES: canopy area bigger than area', &
+                     currentPatch%total_canopy_area ,currentPatch%area, &
+                     currentPatch%total_canopy_area -currentPatch%area,&
+                     currentPatch%nocomp_pft_label
+                call endrun(msg=errMsg(sourcefile, __LINE__))
+             end if
+             currentPatch%total_canopy_area = currentPatch%area
+          endif
 
           currentPatch => currentPatch%younger
        end do !patch loop
@@ -1429,17 +1435,13 @@ contains
           ifp = currentPatch%patchno
           if_bare: if(currentPatch%nocomp_pft_label.ne.nocomp_bareground)then  ! ignore the bare-ground-PFT patch entirely for these BC outs
 
-             ! BEGIN PATCH 2STREAM-GEOMETRY
-             ! BEGIN DEBUG 2STREAM-TINY-PATCH
-             if (currentPatch%total_canopy_area > currentPatch%area) then
+             if ( currentPatch%total_canopy_area-currentPatch%area > 0.000001_r8 ) then
                 if(debug)then
                    write(fates_log(),*) 'ED: canopy area bigger than area', &
                         currentPatch%total_canopy_area ,currentPatch%area
                 end if
+                currentPatch%total_canopy_area = currentPatch%area
              endif
-             ! END DEBUG 2STREAM-TINY-PATCH
-             call CheckCanopyFootprint(currentPatch)
-             ! END PATCH 2STREAM-GEOMETRY
 
              if (associated(currentPatch%tallest)) then
                 bc_out(s)%htop_pa(ifp) = currentPatch%tallest%height
@@ -1709,34 +1711,6 @@ contains
    end subroutine CanopyLayerArea
   
   ! ===============================================================================================
-
-  ! BEGIN PATCH 2STREAM-GEOMETRY
-  subroutine CheckCanopyFootprint(patch)
-    type(fates_patch_type), intent(inout) :: patch
-
-    if (.not. ieee_is_finite(patch%area) .or. &
-        .not. ieee_is_finite(patch%total_canopy_area)) then
-       write(fates_log(),*) 'Non-finite canopy geometry: ', &
-            patch%patchno,patch%area,patch%total_canopy_area
-       call endrun(msg=errMsg(sourcefile, __LINE__))
-    end if
-    if (patch%area <= 0._r8 .or. patch%total_canopy_area < 0._r8) then
-       write(fates_log(),*) 'Invalid canopy geometry: ', &
-            patch%patchno,patch%area,patch%total_canopy_area
-       call endrun(msg=errMsg(sourcefile, __LINE__))
-    end if
-    if (patch%total_canopy_area > patch%area) then
-       if (patch%total_canopy_area-patch%area > &
-           rsnbl_math_prec*max(patch%total_canopy_area,patch%area)) then
-          write(fates_log(),*) 'FATES: canopy area bigger than area', &
-               patch%total_canopy_area,patch%area, &
-               patch%total_canopy_area-patch%area,patch%nocomp_pft_label
-          call endrun(msg=errMsg(sourcefile, __LINE__))
-       end if
-       patch%total_canopy_area = patch%area
-    end if
-  end subroutine CheckCanopyFootprint
-  ! END PATCH 2STREAM-GEOMETRY
 
   subroutine UpdatePatchLAI(currentPatch)
 

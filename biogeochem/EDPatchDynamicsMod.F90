@@ -3766,14 +3766,6 @@ contains
              end do
              ! END DEBUG 2STREAM-TINY-PATCH
 
-             ! BEGIN PATCH TINY-PATCH-RESOLUTION
-             if (currentPatch%area <= rsnbl_math_prec*area_site) then
-                write(fates_log(),*) 'terminate_patches: unresolved site-negligible patch', &
-                     currentPatch%area,rsnbl_math_prec*area_site
-                call endrun(msg=errMsg(sourcefile, __LINE__))
-             end if
-             ! END PATCH TINY-PATCH-RESOLUTION
-
              !call endrun(msg=errMsg(sourcefile, __LINE__))
           
              ! Note to user. If you DO decide to remove the end-run above this line
