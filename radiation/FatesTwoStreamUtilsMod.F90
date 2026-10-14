@@ -320,7 +320,32 @@ contains
                         call endrun(msg=errMsg(sourcefile, __LINE__))
                      end if
                   end if
+                  if((canopy_frac(ican)-1._r8)>0.5_r8*areamax) then
+                     write(fates_log(),*) 'ConstructRadElements: anomalous area correction BEFORE'
+                     write(fates_log(),*) 'lat/lon: ',site%lat,site%lon,' patchno: ',patch%patchno
+                     write(fates_log(),*) 'patch area: ',patch%area,' total_canopy_area: ',patch%total_canopy_area
+                     write(fates_log(),*) 'layer: ',ican,' n_col: ',n_col(ican),' donor column: ',icolmax
+                     write(fates_log(),*) 'canopy_frac: ',canopy_frac(ican),' nearzero: ',nearzero
+                     write(fates_log(),*) 'donor area before: ',areamax,' correction: ',canopy_frac(ican)-1._r8
+                     write(fates_log(),*) 'canopy_frac - 1 == canopy_frac: ', &
+                          (canopy_frac(ican)-1._r8)==canopy_frac(ican)
+                     write(fates_log(),*) 'layer area sum before: ',sum(twostr%scelg(ican,1:n_col(ican))%area)
+                  end if
                   twostr%scelg(ican,icolmax)%area = twostr%scelg(ican,icolmax)%area - (canopy_frac(ican)-1._r8)
+                  if((canopy_frac(ican)-1._r8)>0.5_r8*areamax) then
+                     write(fates_log(),*) 'ConstructRadElements: anomalous area correction AFTER'
+                     write(fates_log(),*) 'lat/lon: ',site%lat,site%lon,' patchno: ',patch%patchno,' layer: ',ican
+                     write(fates_log(),*) 'donor area after: ',twostr%scelg(ican,icolmax)%area
+                     write(fates_log(),*) 'layer area sum after: ',sum(twostr%scelg(ican,1:n_col(ican))%area)
+                     cohort => patch%tallest
+                     do while (associated(cohort))
+                        write(fates_log(),*) 'cohort pft: ',cohort%pft,' layer: ',cohort%canopy_layer, &
+                             ' twostr_col: ',cohort%twostr_col
+                        write(fates_log(),*) 'cohort n: ',cohort%n,' c_area: ',cohort%c_area
+                        write(fates_log(),*) 'cohort treelai: ',cohort%treelai,' treesai: ',cohort%treesai
+                        cohort => cohort%shorter
+                     end do
+                  end if
                else
                   area_ratio = (twostr%scelg(ican,icolmax)%area + (1._r8-canopy_frac(ican)))/twostr%scelg(ican,icolmax)%area
                   twostr%scelg(ican,icolmax)%area = twostr%scelg(ican,icolmax)%area * area_ratio
