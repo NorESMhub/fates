@@ -5,10 +5,12 @@ Module FatesTwoStreamUtilsMod
   ! describe the scattering elements from cohort and patch data, and are
   ! used to decompose the scattering elements to return values
   ! at the cohort, or patch-pft scale.
+  use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
   use FatesConstantsMod     , only : r8 => fates_r8
   use FatesConstantsMod     , only : ifalse
   use FatesConstantsMod     , only : itrue
   use FatesConstantsMod     , only : nearzero,nocomp_bareground
+  use FatesConstantsMod     , only : rsnbl_math_prec
   use shr_log_mod           , only : errMsg => shr_log_errMsg
   use FatesGlobals          , only : fates_log
   use FatesGlobals          , only : endrun => fates_endrun
@@ -22,6 +24,7 @@ Module FatesTwoStreamUtilsMod
   use FatesCohortMod        , only : fates_cohort_type
   use FatesPatchMod         , only : fates_patch_type
   use EDTypesMod            , only : ed_site_type
+  use EDTypesMod            , only : area_site => area
   use EDParamsMod           , only : nclmax
   use TwoStreamMLPEMod      , only : twostream_type
   use TwoStreamMLPEMod      , only : RadParamPrep
@@ -149,17 +152,48 @@ contains
          ! LAI and SAI to conserve area)
         
             
-         if(patch%total_canopy_area>nearzero)then
+         ! BEGIN PATCH 2STREAM-INPUT
+         if (associated(patch%tallest)) then
+            if (.not. ieee_is_finite(patch%area) .or. &
+                .not. ieee_is_finite(patch%total_canopy_area)) then
+               write(fates_log(),*) 'ConstructRadElements: non-finite geometry', &
+                    site%lat,site%lon,patch%patchno,patch%area,patch%total_canopy_area
+               call endrun(msg=errMsg(sourcefile, __LINE__))
+            end if
+            if (patch%area <= rsnbl_math_prec*area_site .or. &
+                patch%total_canopy_area <= 0._r8) then
+               write(fates_log(),*) 'ConstructRadElements: unresolved patch geometry', &
+                    site%lat,site%lon,patch%patchno,patch%area,patch%total_canopy_area
+               call endrun(msg=errMsg(sourcefile, __LINE__))
+            end if
+         end if
+         ! END PATCH 2STREAM-INPUT
+         if(patch%total_canopy_area>0._r8)then
             canopy_frac(:) = 0._r8
             cohort => patch%tallest
             do while (associated(cohort))
                ican = cohort%canopy_layer
+               ! BEGIN PATCH 2STREAM-INPUT
+               if (.not. ieee_is_finite(cohort%c_area) .or. cohort%c_area < 0._r8) then
+                  write(fates_log(),*) 'ConstructRadElements: invalid cohort crown area', &
+                       site%lat,site%lon,patch%patchno,cohort%pft,cohort%c_area
+                  call endrun(msg=errMsg(sourcefile, __LINE__))
+               end if
+               ! END PATCH 2STREAM-INPUT
                canopy_frac(ican) = canopy_frac(ican) + cohort%c_area/patch%total_canopy_area
                cohort => cohort%shorter
             enddo
          else
             canopy_frac(:) = 0._r8
          end if
+
+         ! BEGIN PATCH 2STREAM-INPUT
+         if (any(.not. ieee_is_finite(canopy_frac(1:patch%ncl_p)))) then
+            write(fates_log(),*) 'ConstructRadElements: non-finite layer fractions', &
+                 site%lat,site%lon,patch%patchno,canopy_frac(1:patch%ncl_p)
+            call endrun(msg=errMsg(sourcefile, __LINE__))
+         end if
+         ! END PATCH 2STREAM-INPUT
 
          ! Add the air element if the canopy area is not filled
          do ican = 1,patch%ncl_p
@@ -281,7 +315,7 @@ contains
             ! model if so. This should not happen and would most likely be an issue
             ! with the canopy ppa promotion/demotion logic
             ! This is more of a sanity check, so we use a 1% threshold
-            if(debug)then
+            ! BEGIN PATCH 2STREAM-GEOMETRY
                if_very_overfull: if( (canopy_frac(ican)-1._r8)>0.01_r8 ) then
                   write(fates_log(),*) 'One of the fates canopy layers takes up'
                   write(fates_log(),*) 'more than 100% of the area footprint, exceeding a'
@@ -290,7 +324,7 @@ contains
                   write(fates_log(),*) 'canopy layer: ',ican,' canopy_frac:',canopy_frac(ican)
                   call endrun(msg=errMsg(sourcefile, __LINE__))
                end if if_very_overfull
-            end if
+            ! END PATCH 2STREAM-GEOMETRY
             ! If the layer is overfull, remove some from area from
             ! the element with the largest footprint
 
@@ -320,6 +354,7 @@ contains
                         call endrun(msg=errMsg(sourcefile, __LINE__))
                      end if
                   end if
+                  ! BEGIN DEBUG 2STREAM-TINY-PATCH
                   if((canopy_frac(ican)-1._r8)>0.5_r8*areamax) then
                      write(fates_log(),*) 'ConstructRadElements: anomalous area correction BEFORE'
                      write(fates_log(),*) 'lat/lon: ',site%lat,site%lon,' patchno: ',patch%patchno
@@ -331,7 +366,9 @@ contains
                           (canopy_frac(ican)-1._r8)==canopy_frac(ican)
                      write(fates_log(),*) 'layer area sum before: ',sum(twostr%scelg(ican,1:n_col(ican))%area)
                   end if
+                  ! END DEBUG 2STREAM-TINY-PATCH
                   twostr%scelg(ican,icolmax)%area = twostr%scelg(ican,icolmax)%area - (canopy_frac(ican)-1._r8)
+                  ! BEGIN DEBUG 2STREAM-TINY-PATCH
                   if((canopy_frac(ican)-1._r8)>0.5_r8*areamax) then
                      write(fates_log(),*) 'ConstructRadElements: anomalous area correction AFTER'
                      write(fates_log(),*) 'lat/lon: ',site%lat,site%lon,' patchno: ',patch%patchno,' layer: ',ican
@@ -346,6 +383,7 @@ contains
                         cohort => cohort%shorter
                      end do
                   end if
+                  ! END DEBUG 2STREAM-TINY-PATCH
                else
                   area_ratio = (twostr%scelg(ican,icolmax)%area + (1._r8-canopy_frac(ican)))/twostr%scelg(ican,icolmax)%area
                   twostr%scelg(ican,icolmax)%area = twostr%scelg(ican,icolmax)%area * area_ratio

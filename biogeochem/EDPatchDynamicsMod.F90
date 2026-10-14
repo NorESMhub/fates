@@ -685,6 +685,7 @@ contains
                                          num_swb, numpft, currentSite%nlevsoil, hlm_current_tod,              &
                                          hlm_regeneration_model)
 
+                      ! BEGIN DEBUG 2STREAM-TINY-PATCH
                       if(site_areadis < rsnbl_math_prec*area_site) then
                        write(fates_log(),*) 'spawn_patches: tiny patch CREATED'
                        write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
@@ -694,6 +695,7 @@ contains
                        write(fates_log(),*) 'new area: ',site_areadis,' diagnostic area threshold: ', &
                           rsnbl_math_prec*area_site,' nearzero: ',nearzero
                       end if
+                      ! END DEBUG 2STREAM-TINY-PATCH
 
                    ! Initialize the litter pools to zero, these
                    ! pools will be populated by looping over the existing patches
@@ -816,6 +818,7 @@ contains
                             ! area modified number density into the new patch, and apply survivorship.
                             ! -------------------------------------------------------------------------
 
+                              ! BEGIN DEBUG 2STREAM-TINY-PATCH
                               if(site_areadis < rsnbl_math_prec*area_site) then
                                write(fates_log(),*) 'spawn_patches: tiny patch transfer BEFORE'
                                write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
@@ -827,6 +830,7 @@ contains
                                write(fates_log(),*) 'transferred area: ',patch_site_areadis, &
                                   ' fraction: ',patch_site_areadis/currentPatch%area
                               end if
+                              ! END DEBUG 2STREAM-TINY-PATCH
                             currentCohort => currentPatch%shortest
                             cohortloop: do while(associated(currentCohort))
 
@@ -850,11 +854,13 @@ contains
                                ! is the curent cohort that stays in the donor patch (currentPatch)
                                call currentCohort%Copy(nc)
 
+                               ! BEGIN DEBUG 2STREAM-TINY-PATCH
                                if(site_areadis < rsnbl_math_prec*area_site) then
                                   write(fates_log(),*) 'spawn_patches: cohort BEFORE pft/layer: ', &
                                        currentCohort%pft,currentCohort%canopy_layer
                                   write(fates_log(),*) 'cohort n/c_area: ',currentCohort%n,currentCohort%c_area
                                end if
+                               ! END DEBUG 2STREAM-TINY-PATCH
 
                                !this is the case as the new patch probably doesn't have a closed canopy, and
                                ! even if it does, that will be sorted out in canopy_structure.
@@ -1359,11 +1365,13 @@ contains
                                   call endrun(msg=errMsg(sourcefile, __LINE__))
                                end select disttype_case    ! Select disturbance mode
 
+                               ! BEGIN DEBUG 2STREAM-TINY-PATCH
                                if(site_areadis < rsnbl_math_prec*area_site) then
                                   write(fates_log(),*) 'spawn_patches: cohort AFTER pft: ',currentCohort%pft
                                   write(fates_log(),*) 'donor/receiver n: ',currentCohort%n,nc%n
                                   write(fates_log(),*) 'donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
                                end if
+                               ! END DEBUG 2STREAM-TINY-PATCH
 
                                ! if some plants in the new temporary cohort survived the transfer to the new patch,
                                ! then put the cohort into the linked list.
@@ -1390,10 +1398,12 @@ contains
                             oldarea = currentPatch%area
                             currentPatch%area = currentPatch%area - patch_site_areadis
 
+                            ! BEGIN DEBUG 2STREAM-TINY-PATCH
                             if(site_areadis < rsnbl_math_prec*area_site) then
                                write(fates_log(),*) 'spawn_patches: tiny patch transfer AFTER donor area: ',currentPatch%area
                                write(fates_log(),*) 'donor area subtraction unchanged: ',currentPatch%area==oldarea
                             end if
+                            ! END DEBUG 2STREAM-TINY-PATCH
 
                             ! for all disturbance rates that haven't been resolved yet, increase their amount so that
                             ! they are the same amount of gridcell-scale disturbance relative to the original patch size
@@ -1757,6 +1767,7 @@ contains
     do while(associated(currentPatch))
        currentPatch%disturbance_rates(:) = 0._r8
        currentPatch%fract_ldist_not_harvested = 0._r8
+       ! BEGIN DEBUG 2STREAM-TINY-PATCH
        if(currentPatch%area < rsnbl_math_prec*area_site) then
           write(fates_log(),*) 'spawn_patches: tiny patch EXIT'
           write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
@@ -1769,6 +1780,7 @@ contains
              currentCohort => currentCohort%taller
           end do
        end if
+       ! END DEBUG 2STREAM-TINY-PATCH
        currentPatch => currentPatch%younger
     end do
 
@@ -1795,7 +1807,9 @@ contains
     type (fates_cohort_type), pointer :: currentCohort
     integer  :: pft
     real(r8) :: temp_area
-   logical :: log_small_split
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
+    logical :: log_small_split
+    ! END DEBUG 2STREAM-TINY-PATCH
 
     temp_area = 0._r8
     if (present(area_to_remove)) then
@@ -1804,6 +1818,7 @@ contains
        temp_area = currentPatch%area - (currentPatch%area * fraction_to_keep)
     end if
 
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
     log_small_split = min(temp_area,currentPatch%area-temp_area) < rsnbl_math_prec*area_site
     if(log_small_split) then
        write(fates_log(),*) 'split_patch: tiny split BEFORE'
@@ -1815,6 +1830,7 @@ contains
           write(fates_log(),*) 'removed area fraction: ',temp_area/currentPatch%area
        end if
     end if
+    ! END DEBUG 2STREAM-TINY-PATCH
 
     ! first we need to make the new patch
     call new_patch%Create(0._r8, temp_area, &
@@ -1867,10 +1883,12 @@ contains
        ! is the curent cohort that stays in the donor patch (currentPatch)
        call currentCohort%Copy(nc)
 
+       ! BEGIN DEBUG 2STREAM-TINY-PATCH
              if(log_small_split) then
            write(fates_log(),*) 'split_patch: cohort BEFORE pft/n/c_area: ', &
                 currentCohort%pft,currentCohort%n,currentCohort%c_area
              end if
+       ! END DEBUG 2STREAM-TINY-PATCH
 
        ! Number of members in the new patch
        nc%n = currentCohort%n * (1._r8 - fraction_to_keep)
@@ -1878,10 +1896,12 @@ contains
        ! loss of individuals from source patch due to area shrinking
        currentCohort%n = currentCohort%n * fraction_to_keep
 
+       ! BEGIN DEBUG 2STREAM-TINY-PATCH
        if(log_small_split) then
           write(fates_log(),*) 'split_patch: cohort AFTER donor/receiver n: ',currentCohort%n,nc%n
           write(fates_log(),*) 'split_patch: donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
        end if
+       ! END DEBUG 2STREAM-TINY-PATCH
 
        call new_patch%InsertCohort(nc)
 
@@ -1895,9 +1915,11 @@ contains
     !update area of donor patch
     currentPatch%area = currentPatch%area - temp_area
 
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
     if(log_small_split) then
        write(fates_log(),*) 'split_patch: tiny split AFTER donor/receiver area: ',currentPatch%area,new_patch%area
     end if
+    ! END DEBUG 2STREAM-TINY-PATCH
 
   end subroutine split_patch
 
@@ -3496,7 +3518,9 @@ contains
     type(fates_patch_type), pointer :: youngerPatch
     type(fates_patch_type), pointer :: patchpointer
     type(fates_patch_type), pointer :: largest_patch
-   type(fates_cohort_type), pointer :: diagnostic_cohort
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
+    type(fates_cohort_type), pointer :: diagnostic_cohort
+    ! END DEBUG 2STREAM-TINY-PATCH
     integer, parameter           :: max_cycles = 10  ! After 10 loops through
                                                      ! You should had fused
     integer                      :: count_cycles
@@ -3727,6 +3751,7 @@ contains
              currentPatch => currentSite%youngest_patch
           else
              write(fates_log(),*) 'this isnt because the land use was less than allowed'
+             ! BEGIN DEBUG 2STREAM-TINY-PATCH
              write(fates_log(),*) 'terminate_patches: unresolved tiny patch RETAINED'
              write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
              write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
@@ -3739,6 +3764,15 @@ contains
                      diagnostic_cohort%canopy_layer,diagnostic_cohort%n,diagnostic_cohort%c_area
                 diagnostic_cohort => diagnostic_cohort%taller
              end do
+             ! END DEBUG 2STREAM-TINY-PATCH
+
+             ! BEGIN PATCH TINY-PATCH-RESOLUTION
+             if (currentPatch%area <= rsnbl_math_prec*area_site) then
+                write(fates_log(),*) 'terminate_patches: unresolved site-negligible patch', &
+                     currentPatch%area,rsnbl_math_prec*area_site
+                call endrun(msg=errMsg(sourcefile, __LINE__))
+             end if
+             ! END PATCH TINY-PATCH-RESOLUTION
 
              !call endrun(msg=errMsg(sourcefile, __LINE__))
           
