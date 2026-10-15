@@ -138,6 +138,18 @@ contains
              currentPatch%gnd_alb_dir(1:num_swb) = bc_in(s)%albgr_dir_rb(1:num_swb)
              currentPatch%fcansno                = bc_in(s)%fcansno_pa(ifp)
              currentPatch%rad_error(:)           = hlm_hio_ignore_val
+
+             ! BEGIN PATCH 2STREAM-RADIATION-GATE
+             if (hlm_radiation_model == twostr_solver .and. currentPatch%radiation_gated) then
+                bc_out(s)%albd_parb(ifp,:) = currentPatch%gnd_alb_dir(1:num_swb)
+                bc_out(s)%albi_parb(ifp,:) = currentPatch%gnd_alb_dif(1:num_swb)
+                bc_out(s)%ftdd_parb(ifp,:) = 1._r8
+                bc_out(s)%ftii_parb(ifp,:) = 1._r8
+                currentPatch%rad_error(:) = 0._r8
+                currentPatch => currentPatch%younger
+                cycle
+             end if
+             ! END PATCH 2STREAM-RADIATION-GATE
              
              if_zenith_flag: if( bc_in(s)%coszen>0._r8 )then
                 
@@ -278,6 +290,18 @@ contains
              cpatch%ed_parsha_z(:,:,:) = 0._r8
              cpatch%ed_laisun_z(:,:,:) = 0._r8
              cpatch%ed_laisha_z(:,:,:) = 0._r8
+
+             ! BEGIN PATCH 2STREAM-RADIATION-GATE
+             if (hlm_radiation_model == twostr_solver .and. cpatch%radiation_gated) then
+                cpatch%f_sun(:,:,:) = 0._r8
+                cpatch%ed_laisha_z(:,:,:) = cpatch%elai_profile(:,:,:)
+                bc_out(s)%fsun_pa(ifp) = 0._r8
+                bc_out(s)%laisun_pa(ifp) = 0._r8
+                bc_out(s)%laisha_pa(ifp) = calc_areaindex(cpatch,'elai')
+                cpatch => cpatch%younger
+                cycle
+             end if
+             ! END PATCH 2STREAM-RADIATION-GATE
 
              if_norm_twostr: if (hlm_radiation_model.eq.norman_solver) then
 

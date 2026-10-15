@@ -4217,6 +4217,21 @@ contains
 
            if_notbareground: if(currentPatch%nocomp_pft_label.ne.nocomp_bareground) then
 
+           ! BEGIN PATCH 2STREAM-RADIATION-GATE
+           if (hlm_radiation_model == twostr_solver .and. currentPatch%radiation_gated) then
+              albd_parb(ifp,:) = currentPatch%gnd_alb_dir(1:num_swb)
+              albi_parb(ifp,:) = currentPatch%gnd_alb_dif(1:num_swb)
+              fabd_parb(ifp,:) = 0._r8
+              fabi_parb(ifp,:) = 0._r8
+              ftdd_parb(ifp,:) = 1._r8
+              ftid_parb(ifp,:) = 0._r8
+              ftii_parb(ifp,:) = 1._r8
+              currentPatch%rad_error(:) = 0._r8
+              currentPatch => currentPatch%younger
+              cycle while_patch
+           end if
+           ! END PATCH 2STREAM-RADIATION-GATE
+
            if_zenith_flag: if (sites(s)%coszen>0._r8) then
               
               select case(hlm_radiation_model)

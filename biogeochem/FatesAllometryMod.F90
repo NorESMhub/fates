@@ -784,6 +784,10 @@ contains
           if(leafc_slamax >= clim)then
              write(fates_log(),*) 'too much leafc_slamax' , &
                   leafc_per_unitarea, leafc_slamax, clim, pft, canopy_lai_above
+             ! BEGIN DEBUG 2STREAM-TINY-PATCH
+             write(fates_log(),*) 'tree_lai: layer/c_area/nplant/leaf_c: ',cl,c_area,nplant,leaf_c
+             write(fates_log(),*) 'tree_lai: kn/slat/sla_max: ',kn,slat,sla_max
+             ! END DEBUG 2STREAM-TINY-PATCH
              write(fates_log(),*) 'Aborting'
              call endrun(msg=errMsg(sourcefile, __LINE__))
           endif

@@ -66,6 +66,7 @@ contains
 
     integer :: maxcol
     real(r8) :: canopy_frac(nclmax)
+    real(r8) :: layer_crown_area(nclmax)
     integer  :: ifp
     integer  :: ib
     ! Area indices for the cohort [m2 media / m2 crown footprint]
@@ -85,6 +86,7 @@ contains
     integer  :: icolmax         ! Column index for each layer with largest area footprint
     real(r8) :: areamax         ! The area footprint of the largest column
     logical :: normalize_layer
+    logical :: invalid_crown_area
     
     ! its possible that there is more horizontal area taken up by the cohorts
     ! than there is ground, which is simply a result numerical and algorithmic
@@ -110,6 +112,7 @@ contains
     ifp = 0
     patch => site%oldest_patch
     do while (associated(patch))
+       patch%radiation_gated = .false.
 
        if_notbareground: if(patch%nocomp_pft_label.ne.nocomp_bareground)then
 
@@ -128,13 +131,52 @@ contains
 
          ! Identify how many elements we need
          n_col(1:nclmax) = 0
+         layer_crown_area(:) = 0._r8
+         invalid_crown_area = .false.
          cohort => patch%tallest
          do while (associated(cohort))
             ft = cohort%pft
             ican = cohort%canopy_layer
             n_col(ican) = n_col(ican) + 1
+            if (cohort%c_area >= 0._r8 .and. cohort%c_area <= huge(1._r8)) then
+               layer_crown_area(ican) = layer_crown_area(ican) + cohort%c_area
+            else
+               invalid_crown_area = .true.
+            end if
             cohort => cohort%shorter
          enddo
+
+         ! BEGIN PATCH 2STREAM-RADIATION-GATE
+         ! Test footprint before division; tiny but consistent patches remain active.
+         if (patch%area > 0._r8 .and. patch%area <= rsnbl_math_prec*area_site .and. &
+             associated(patch%tallest)) then
+            patch%radiation_gated = invalid_crown_area .or. &
+                 .not. (patch%total_canopy_area > 0._r8 .and. &
+                        patch%total_canopy_area <= huge(1._r8))
+            if (.not. patch%radiation_gated) then
+               patch%radiation_gated = any(layer_crown_area-patch%total_canopy_area > &
+                    0.01_r8*patch%total_canopy_area)
+            end if
+         end if
+         if (patch%radiation_gated) then
+            ! BEGIN DEBUG 2STREAM-TINY-PATCH
+            write(fates_log(),*) 'ConstructRadElements: ground-only radiation gate', &
+                 site%lat,site%lon,patch%patchno,patch%area,patch%total_canopy_area
+            write(fates_log(),*) 'layer crown areas: ',layer_crown_area(1:patch%ncl_p)
+            ! END DEBUG 2STREAM-TINY-PATCH
+            twostr%n_lyr = 0
+            twostr%n_scel = 0
+            if (allocated(twostr%n_col)) twostr%n_col(:) = 0
+            twostr%force_prep = .true.
+            cohort => patch%tallest
+            do while (associated(cohort))
+               cohort%twostr_col = 0
+               cohort => cohort%shorter
+            end do
+            patch => patch%younger
+            cycle
+         end if
+         ! END PATCH 2STREAM-RADIATION-GATE
 
          ! If there is only one layer, then we don't
          ! need to add an air element to the only
@@ -453,6 +495,10 @@ contains
     
     laisun = 0._r8
     laisha = 0._r8
+    if (patch%radiation_gated) then
+       fsun = 0._r8
+       return
+    end if
 
     associate(twostr => patch%twostr)
     
@@ -517,6 +563,8 @@ contains
     real(r8) :: rb_abs,rd_abs,rb_abs_leaf,rd_abs_leaf,leaf_sun_frac,check_fab,in_fab
     logical :: call_fail
     
+    if (patch%radiation_gated) return
+
     associate(twostr => patch%twostr)
 
       check_fab = 0._r8
@@ -607,6 +655,15 @@ contains
     real(r8) :: evai_cvai  ! element VAI / cohort VAI
     logical  :: call_fail
     
+    if (patch%radiation_gated) then
+       rb_abs = 0._r8
+       rd_abs = 0._r8
+       rb_abs_leaf = 0._r8
+       rd_abs_leaf = 0._r8
+       leaf_sun_frac = 0._r8
+       return
+    end if
+
     associate(scelg => patch%twostr%scelg(cohort%canopy_layer,cohort%twostr_col), &
          scelb => patch%twostr%band(ib)%scelb(cohort%canopy_layer,cohort%twostr_col) )
 

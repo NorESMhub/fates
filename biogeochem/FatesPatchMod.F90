@@ -185,6 +185,7 @@ module FatesPatchMod
 
     ! Twostream data structures
     type(twostream_type) :: twostr                        ! This holds all two-stream data and procedures
+    logical :: radiation_gated = .false. ! Recomputed from geometry; not restart state.
    
     
     !---------------------------------------------------------------------------
@@ -738,6 +739,7 @@ module FatesPatchMod
       ! initialize patch
       ! sets all values to nan, then some values to zero
       call this%Init(num_swb, num_levsoil)
+      this%radiation_gated = .false.
 
       ! initialize running means for patch
       call this%InitRunningMeans(current_tod, regeneration_model, num_pft)
