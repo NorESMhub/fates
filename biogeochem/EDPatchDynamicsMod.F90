@@ -558,6 +558,11 @@ contains
     integer  :: which_pft_allowed
     logical  :: buffer_patch_used
     logical  :: clear_all
+    ! BEGIN DEBUG 2STREAM-OVERFULL-CROSSING
+    real(r8) :: crown_before                 ! donor layer-1 crown area before this transfer [m2]
+    real(r8) :: crown_after                  ! donor layer-1 crown area after this transfer [m2]
+    real(r8), parameter :: overfull_tol = 0.01_r8 ! matches the radiation gate's 1% overfill test
+    ! END DEBUG 2STREAM-OVERFULL-CROSSING
     !---------------------------------------------------------------------
 
     if (hlm_use_nocomp .eq. itrue) then
@@ -685,17 +690,6 @@ contains
                                          num_swb, numpft, currentSite%nlevsoil, hlm_current_tod,              &
                                          hlm_regeneration_model)
 
-                      ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                      if(site_areadis < rsnbl_math_prec*area_site) then
-                       write(fates_log(),*) 'spawn_patches: tiny patch CREATED'
-                       write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
-                       write(fates_log(),*) 'disturbance: ',i_disturbance_type,' nocomp pft: ',i_nocomp_pft
-                       write(fates_log(),*) 'donor/receiver landuse: ',i_donorpatch_landuse_type, &
-                          i_landusechange_receiverpatchlabel
-                       write(fates_log(),*) 'new area: ',site_areadis,' diagnostic area threshold: ', &
-                          rsnbl_math_prec*area_site,' nearzero: ',nearzero
-                      end if
-                      ! END DEBUG 2STREAM-TINY-PATCH
 
                    ! Initialize the litter pools to zero, these
                    ! pools will be populated by looping over the existing patches
@@ -818,19 +812,10 @@ contains
                             ! area modified number density into the new patch, and apply survivorship.
                             ! -------------------------------------------------------------------------
 
-                              ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                              if(site_areadis < rsnbl_math_prec*area_site) then
-                               write(fates_log(),*) 'spawn_patches: tiny patch transfer BEFORE'
-                               write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
-                               write(fates_log(),*) 'donor patchno: ',currentPatch%patchno, &
-                                  ' disturbance: ',i_disturbance_type
-                               write(fates_log(),*) 'donor/receiver landuse: ',currentPatch%land_use_label, &
-                                  newPatch%land_use_label,' nocomp pft: ',currentPatch%nocomp_pft_label
-                               write(fates_log(),*) 'donor/receiver area: ',currentPatch%area,newPatch%area
-                               write(fates_log(),*) 'transferred area: ',patch_site_areadis, &
-                                  ' fraction: ',patch_site_areadis/currentPatch%area
-                              end if
-                              ! END DEBUG 2STREAM-TINY-PATCH
+                            ! BEGIN DEBUG 2STREAM-OVERFULL-CROSSING
+                            crown_before = upper_canopy_crown_area(currentSite, currentPatch)
+                            ! END DEBUG 2STREAM-OVERFULL-CROSSING
+
                             currentCohort => currentPatch%shortest
                             cohortloop: do while(associated(currentCohort))
 
@@ -854,13 +839,6 @@ contains
                                ! is the curent cohort that stays in the donor patch (currentPatch)
                                call currentCohort%Copy(nc)
 
-                               ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                               if(site_areadis < rsnbl_math_prec*area_site) then
-                                  write(fates_log(),*) 'spawn_patches: cohort BEFORE pft/layer: ', &
-                                       currentCohort%pft,currentCohort%canopy_layer
-                                  write(fates_log(),*) 'cohort n/c_area: ',currentCohort%n,currentCohort%c_area
-                               end if
-                               ! END DEBUG 2STREAM-TINY-PATCH
 
                                !this is the case as the new patch probably doesn't have a closed canopy, and
                                ! even if it does, that will be sorted out in canopy_structure.
@@ -1365,13 +1343,6 @@ contains
                                   call endrun(msg=errMsg(sourcefile, __LINE__))
                                end select disttype_case    ! Select disturbance mode
 
-                               ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                               if(site_areadis < rsnbl_math_prec*area_site) then
-                                  write(fates_log(),*) 'spawn_patches: cohort AFTER pft: ',currentCohort%pft
-                                  write(fates_log(),*) 'donor/receiver n: ',currentCohort%n,nc%n
-                                  write(fates_log(),*) 'donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
-                               end if
-                               ! END DEBUG 2STREAM-TINY-PATCH
 
                                ! if some plants in the new temporary cohort survived the transfer to the new patch,
                                ! then put the cohort into the linked list.
@@ -1398,12 +1369,23 @@ contains
                             oldarea = currentPatch%area
                             currentPatch%area = currentPatch%area - patch_site_areadis
 
-                            ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                            if(site_areadis < rsnbl_math_prec*area_site) then
-                               write(fates_log(),*) 'spawn_patches: tiny patch transfer AFTER donor area: ',currentPatch%area
-                               write(fates_log(),*) 'donor area subtraction unchanged: ',currentPatch%area==oldarea
+                            ! BEGIN DEBUG 2STREAM-OVERFULL-CROSSING
+                            ! One line, only when this transfer makes a consistent donor overfull.
+                            crown_after = upper_canopy_crown_area(currentSite, currentPatch)
+                            if (crown_before <= (1._r8+overfull_tol)*oldarea .and. &
+                                 crown_after > (1._r8+overfull_tol)*currentPatch%area) then
+                               write(fates_log(),'(A,2F10.4,6I5,*(1X,ES11.4))') &
+                                    'OVERFULL-CROSSING lat lon patchno lu nocomp dtype recv_lu recv_nocomp '// &
+                                    'oldarea newarea crown_before crown_after dist_rates(:) lu_rates(:): ', &
+                                    currentSite%lat, currentSite%lon, &
+                                    currentPatch%patchno, currentPatch%land_use_label, currentPatch%nocomp_pft_label, &
+                                    i_disturbance_type, i_landusechange_receiverpatchlabel, newPatch%nocomp_pft_label, &
+                                    oldarea, currentPatch%area, crown_before, crown_after, &
+                                    currentPatch%disturbance_rates(1:N_DIST_TYPES), &
+                                    currentPatch%landuse_transition_rates(1:n_landuse_cats)
                             end if
-                            ! END DEBUG 2STREAM-TINY-PATCH
+                            ! END DEBUG 2STREAM-OVERFULL-CROSSING
+
 
                             ! for all disturbance rates that haven't been resolved yet, increase their amount so that
                             ! they are the same amount of gridcell-scale disturbance relative to the original patch size
@@ -1767,25 +1749,36 @@ contains
     do while(associated(currentPatch))
        currentPatch%disturbance_rates(:) = 0._r8
        currentPatch%fract_ldist_not_harvested = 0._r8
-       ! BEGIN DEBUG 2STREAM-TINY-PATCH
-       if(currentPatch%area < rsnbl_math_prec*area_site) then
-          write(fates_log(),*) 'spawn_patches: tiny patch EXIT'
-          write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
-          write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
-          write(fates_log(),*) 'patch area: ',currentPatch%area
-          currentCohort => currentPatch%shortest
-          do while(associated(currentCohort))
-             write(fates_log(),*) 'cohort pft/n/cached c_area: ', &
-                  currentCohort%pft,currentCohort%n,currentCohort%c_area
-             currentCohort => currentCohort%taller
-          end do
-       end if
-       ! END DEBUG 2STREAM-TINY-PATCH
        currentPatch => currentPatch%younger
     end do
 
     return
   end subroutine spawn_patches
+
+  ! -----------------------------------------------------------------------------------------
+
+  ! BEGIN DEBUG 2STREAM-OVERFULL-CROSSING
+  function upper_canopy_crown_area(csite, cpatch) result(crown_area)
+    ! Layer-1 crown area from current n; cached c_area is stale during spawn_patches.
+    type(ed_site_type),     intent(in)          :: csite
+    type(fates_patch_type), intent(in), pointer :: cpatch
+    real(r8)                                    :: crown_area
+
+    type(fates_cohort_type), pointer :: ccohort
+    real(r8) :: dbh, c_area
+
+    crown_area = 0._r8
+    ccohort => cpatch%shortest
+    do while(associated(ccohort))
+       if (ccohort%canopy_layer == 1) then
+          dbh = ccohort%dbh
+          call carea_allom(dbh, ccohort%n, csite%spread, ccohort%pft, ccohort%crowndamage, c_area)
+          crown_area = crown_area + c_area
+       end if
+       ccohort => ccohort%taller
+    end do
+  end function upper_canopy_crown_area
+  ! END DEBUG 2STREAM-OVERFULL-CROSSING
 
   ! -----------------------------------------------------------------------------------------
 
@@ -1883,12 +1876,6 @@ contains
        ! is the curent cohort that stays in the donor patch (currentPatch)
        call currentCohort%Copy(nc)
 
-       ! BEGIN DEBUG 2STREAM-TINY-PATCH
-             if(log_small_split) then
-           write(fates_log(),*) 'split_patch: cohort BEFORE pft/n/c_area: ', &
-                currentCohort%pft,currentCohort%n,currentCohort%c_area
-             end if
-       ! END DEBUG 2STREAM-TINY-PATCH
 
        ! Number of members in the new patch
        nc%n = currentCohort%n * (1._r8 - fraction_to_keep)
@@ -1896,12 +1883,6 @@ contains
        ! loss of individuals from source patch due to area shrinking
        currentCohort%n = currentCohort%n * fraction_to_keep
 
-       ! BEGIN DEBUG 2STREAM-TINY-PATCH
-       if(log_small_split) then
-          write(fates_log(),*) 'split_patch: cohort AFTER donor/receiver n: ',currentCohort%n,nc%n
-          write(fates_log(),*) 'split_patch: donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
-       end if
-       ! END DEBUG 2STREAM-TINY-PATCH
 
        call new_patch%InsertCohort(nc)
 
