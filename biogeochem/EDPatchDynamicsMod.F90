@@ -1526,15 +1526,9 @@ contains
              call retire_treefall_residual(currentSite, currentPatch, retirement_receiver, &
                   oldarea, N_DIST_TYPES+1, bc_in)
           else
-             ! Orphan: no resolved patch shares its labels, so retire it across labels.
-             call find_cross_label_receiver(currentSite, currentPatch, retirement_receiver)
-             if (associated(retirement_receiver)) then
-                oldarea = currentPatch%area
-                call retire_treefall_residual(currentSite, currentPatch, retirement_receiver, &
-                     oldarea, N_DIST_TYPES+1, bc_in, cross_label=.true.)
-             else
-                call log_retirement_deferral(currentSite, currentPatch)
-             endif
+             ! Orphan (option C): no resolved patch shares its labels, so kill its
+             ! vegetation in place and keep the empty patch with its labels.
+             call empty_orphan_in_place(currentSite, currentPatch, bc_in)
           endif
        endif
        currentPatch => temp_patch
@@ -2101,6 +2095,59 @@ contains
     call fuse_2_patches(csite, donor, receiver)
     nullify(donor)
   end subroutine retire_treefall_residual
+
+  ! -----------------------------------------------------------------------------------------
+
+  subroutine empty_orphan_in_place(csite, cpatch, bc_in)
+    ! Terminate all cohorts of an unresolved overfull patch into its own litter.
+    ! Area and labels are unchanged; the patch stays as an empty (bare) patch.
+    use EDCohortDynamicsMod, only : terminate_cohort
+    use FatesConstantsMod, only : i_term_mort_type_canlev
+
+    type(ed_site_type), intent(inout) :: csite
+    type(fates_patch_type), pointer :: cpatch
+    type(bc_in_type), intent(in) :: bc_in
+
+    type(fates_cohort_type), pointer :: cohort, next_cohort
+    real(r8) :: terminated_mass, terminated_n, surviving_crown
+    logical :: unresolved
+
+    unresolved = unresolved_treefall_residual(csite, cpatch, 0._r8, surviving_crown)
+    if (.not. unresolved) then
+       write(fates_log(),*) 'empty_orphan_in_place: patch does not satisfy retirement trigger'
+       call endrun(msg=errMsg(sourcefile, __LINE__))
+    endif
+
+    terminated_mass = 0._r8
+    terminated_n = 0._r8
+    cohort => cpatch%shortest
+    do while (associated(cohort))
+       next_cohort => cohort%taller
+       terminated_mass = terminated_mass + cohort%n * ( &
+            cohort%prt%GetState(leaf_organ, carbon12_element) + &
+            cohort%prt%GetState(fnrt_organ, carbon12_element) + &
+            cohort%prt%GetState(sapw_organ, carbon12_element) + &
+            cohort%prt%GetState(store_organ, carbon12_element) + &
+            cohort%prt%GetState(struct_organ, carbon12_element) + &
+            cohort%prt%GetState(repro_organ, carbon12_element))
+       terminated_n = terminated_n + cohort%n
+       call terminate_cohort(csite, cpatch, cohort, bc_in, i_term_mort_type_canlev)
+       deallocate(cohort, stat=istat, errmsg=smsg)
+       if (istat /= 0) then
+          write(fates_log(),*) 'empty_orphan_in_place: cohort deallocation failed: '//trim(smsg)
+          call endrun(msg=errMsg(sourcefile, __LINE__))
+       endif
+       cohort => next_cohort
+    enddo
+    cpatch%total_canopy_area = 0._r8
+    cpatch%total_tree_area = 0._r8
+
+    ! BEGIN DEBUG RESIDUAL-RETIREMENT
+    write(fates_log(),'(A,2F10.4,2I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT EMPTY-IN-PLACE', &
+         csite%lat,csite%lon,cpatch%land_use_label,cpatch%nocomp_pft_label, &
+         cpatch%area,surviving_crown,terminated_n,terminated_mass
+    ! END DEBUG RESIDUAL-RETIREMENT
+  end subroutine empty_orphan_in_place
 
   ! -----------------------------------------------------------------------------------------
 
