@@ -150,6 +150,12 @@ module EDPatchDynamicsMod
   real(r8), parameter :: burn_localization = 0.0_r8
   real(r8), parameter :: landusechange_localization = 1.0_r8
 
+  type :: residual_retirement_type
+     type(fates_patch_type), pointer :: donor => null()
+     real(r8) :: original_area
+     type(residual_retirement_type), pointer :: next => null()
+  end type residual_retirement_type
+
   integer :: istat           ! return status code
   character(len=255) :: smsg ! Message string for deallocation errors
   character(len=512) :: msg  ! Message string for warnings and logging
@@ -558,8 +564,12 @@ contains
     integer  :: which_pft_allowed
     logical  :: buffer_patch_used
     logical  :: clear_all
+    logical  :: retire_residual
+    type(fates_patch_type), pointer :: retirement_receiver
+    type(residual_retirement_type), pointer :: retirements, retirement, next_retirement
     !---------------------------------------------------------------------
 
+    nullify(retirements)
     if (hlm_use_nocomp .eq. itrue) then
        min_nocomp_pft = 0
        max_nocomp_pft = numpft
@@ -685,6 +695,18 @@ contains
                                          num_swb, numpft, currentSite%nlevsoil, hlm_current_tod,              &
                                          hlm_regeneration_model)
 
+                      ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                      if(site_areadis < rsnbl_math_prec*area_site) then
+                       write(fates_log(),*) 'spawn_patches: tiny patch CREATED'
+                       write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
+                       write(fates_log(),*) 'disturbance: ',i_disturbance_type,' nocomp pft: ',i_nocomp_pft
+                       write(fates_log(),*) 'donor/receiver landuse: ',i_donorpatch_landuse_type, &
+                          i_landusechange_receiverpatchlabel
+                       write(fates_log(),*) 'new area: ',site_areadis,' diagnostic area threshold: ', &
+                          rsnbl_math_prec*area_site,' nearzero: ',nearzero
+                      end if
+                      ! END DEBUG 2STREAM-TINY-PATCH
+
                    ! Initialize the litter pools to zero, these
                    ! pools will be populated by looping over the existing patches
                    ! and transfering in mass
@@ -735,6 +757,17 @@ contains
                                write(fates_log(),*) 'an un-allocated patch'
                                call endrun(msg=errMsg(sourcefile, __LINE__))
                             end if
+
+                            retire_residual = .false.
+                            if (i_disturbance_type == dtype_ifall) then
+                               if (unresolved_treefall_residual(currentSite, currentPatch, patch_site_areadis)) then
+                                  call find_retirement_receiver(currentSite, currentPatch, retirement_receiver, newPatch, .true.)
+                                  retire_residual = associated(retirement_receiver)
+                                  if (.not. retire_residual) then
+                                     call log_retirement_deferral(currentSite, currentPatch)
+                                  endif
+                               endif
+                            endif
 
                             ! for the case where the donating patch is not primary, and
                             ! the current disturbance from this patch is non-anthropogenic,
@@ -806,6 +839,19 @@ contains
                             ! area modified number density into the new patch, and apply survivorship.
                             ! -------------------------------------------------------------------------
 
+                              ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                              if(site_areadis < rsnbl_math_prec*area_site) then
+                               write(fates_log(),*) 'spawn_patches: tiny patch transfer BEFORE'
+                               write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
+                               write(fates_log(),*) 'donor patchno: ',currentPatch%patchno, &
+                                  ' disturbance: ',i_disturbance_type
+                               write(fates_log(),*) 'donor/receiver landuse: ',currentPatch%land_use_label, &
+                                  newPatch%land_use_label,' nocomp pft: ',currentPatch%nocomp_pft_label
+                               write(fates_log(),*) 'donor/receiver area: ',currentPatch%area,newPatch%area
+                               write(fates_log(),*) 'transferred area: ',patch_site_areadis, &
+                                  ' fraction: ',patch_site_areadis/currentPatch%area
+                              end if
+                              ! END DEBUG 2STREAM-TINY-PATCH
                             currentCohort => currentPatch%shortest
                             cohortloop: do while(associated(currentCohort))
 
@@ -828,6 +874,14 @@ contains
                                ! nc is the new cohort that goes in the disturbed patch (newPatch)... currentCohort
                                ! is the curent cohort that stays in the donor patch (currentPatch)
                                call currentCohort%Copy(nc)
+
+                               ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                               if(site_areadis < rsnbl_math_prec*area_site) then
+                                  write(fates_log(),*) 'spawn_patches: cohort BEFORE pft/layer: ', &
+                                       currentCohort%pft,currentCohort%canopy_layer
+                                  write(fates_log(),*) 'cohort n/c_area: ',currentCohort%n,currentCohort%c_area
+                               end if
+                               ! END DEBUG 2STREAM-TINY-PATCH
 
                                !this is the case as the new patch probably doesn't have a closed canopy, and
                                ! even if it does, that will be sorted out in canopy_structure.
@@ -1332,6 +1386,14 @@ contains
                                   call endrun(msg=errMsg(sourcefile, __LINE__))
                                end select disttype_case    ! Select disturbance mode
 
+                               ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                               if(site_areadis < rsnbl_math_prec*area_site) then
+                                  write(fates_log(),*) 'spawn_patches: cohort AFTER pft: ',currentCohort%pft
+                                  write(fates_log(),*) 'donor/receiver n: ',currentCohort%n,nc%n
+                                  write(fates_log(),*) 'donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
+                               end if
+                               ! END DEBUG 2STREAM-TINY-PATCH
+
                                ! if some plants in the new temporary cohort survived the transfer to the new patch,
                                ! then put the cohort into the linked list.
                                cohort_n_gt_zero: if (nc%n > 0.0_r8) then
@@ -1357,33 +1419,46 @@ contains
                             oldarea = currentPatch%area
                             currentPatch%area = currentPatch%area - patch_site_areadis
 
+                            ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                            if(site_areadis < rsnbl_math_prec*area_site) then
+                               write(fates_log(),*) 'spawn_patches: tiny patch transfer AFTER donor area: ',currentPatch%area
+                               write(fates_log(),*) 'donor area subtraction unchanged: ',currentPatch%area==oldarea
+                            end if
+                            ! END DEBUG 2STREAM-TINY-PATCH
+
                             ! for all disturbance rates that haven't been resolved yet, increase their amount so that
                             ! they are the same amount of gridcell-scale disturbance relative to the original patch size
-                            if (i_disturbance_type .lt. N_DIST_TYPES) then
-                               do i_dist2 = i_disturbance_type+1,N_DIST_TYPES-1
-                                  currentPatch%disturbance_rates(i_dist2) = currentPatch%disturbance_rates(i_dist2) &
-                                       * oldarea / currentPatch%area
-                               end do
-                               do i_dist2 = 1,n_landuse_cats
-                                  currentPatch%landuse_transition_rates(i_dist2) = currentPatch%landuse_transition_rates(i_dist2) &
-                                       * oldarea / currentPatch%area
-                               end do
+                            if (retire_residual) then
+                               ! Finish all donations before changing the receiver's normalization area.
+                               allocate(retirement)
+                               retirement%donor => currentPatch
+                               retirement%original_area = oldarea
+                               retirement%next => retirements
+                               retirements => retirement
                             else
-                               do i_dist2 = i_landusechange_receiverpatchlabel+1,n_landuse_cats
-                                  currentPatch%landuse_transition_rates(i_dist2) = currentPatch%landuse_transition_rates(i_dist2) &
-                                       * oldarea / currentPatch%area
-                               end do
-                            end if
+                               if (i_disturbance_type .lt. N_DIST_TYPES) then
+                                  do i_dist2 = i_disturbance_type+1,N_DIST_TYPES-1
+                                     currentPatch%disturbance_rates(i_dist2) = currentPatch%disturbance_rates(i_dist2) &
+                                          * oldarea / currentPatch%area
+                                  end do
+                                  do i_dist2 = 1,n_landuse_cats
+                                     currentPatch%landuse_transition_rates(i_dist2) = &
+                                          currentPatch%landuse_transition_rates(i_dist2) * oldarea / currentPatch%area
+                                  end do
+                               else
+                                  do i_dist2 = i_landusechange_receiverpatchlabel+1,n_landuse_cats
+                                     currentPatch%landuse_transition_rates(i_dist2) = &
+                                          currentPatch%landuse_transition_rates(i_dist2) * oldarea / currentPatch%area
+                                  end do
+                               end if
 
-                            ! sort out the cohorts, since some of them may be so small as to need removing.
-                            ! the first call to terminate cohorts removes sparse number densities,
-                            ! the second call removes for all other reasons (sparse culling must happen
-                            ! before fusion)
-                            call terminate_cohorts(currentSite, currentPatch, 1,16,bc_in)
-                            call fuse_cohorts(currentSite,currentPatch, bc_in)
-                            call terminate_cohorts(currentSite, currentPatch, 2,16,bc_in)
-                            call currentPatch%SortCohorts()
-                            call currentPatch%ValidateCohorts()
+                               ! Sparse culling must happen before ordinary cohort fusion.
+                               call terminate_cohorts(currentSite, currentPatch, 1,16,bc_in)
+                               call fuse_cohorts(currentSite,currentPatch, bc_in)
+                               call terminate_cohorts(currentSite, currentPatch, 2,16,bc_in)
+                               call currentPatch%SortCohorts()
+                               call currentPatch%ValidateCohorts()
+                            endif
 
                          end if areadis_gt_zero_if   ! if ( newPatch%area > nearzero ) then
 
@@ -1401,6 +1476,21 @@ contains
                 if ( site_areadis .gt. nearzero) then
 
                    call InsertPatch(currentSite, newPatch)
+
+                   do while (associated(retirements))
+                      retirement => retirements
+                      next_retirement => retirement%next
+                      call find_retirement_receiver(currentSite, retirement%donor, retirement_receiver, newPatch)
+                      if (.not. associated(retirement_receiver)) then
+                         ! A receiver was checked before queuing, and resolved receivers cannot be retired.
+                         write(fates_log(),*) 'spawn_patches: lost residual retirement receiver'
+                         call endrun(msg=errMsg(sourcefile, __LINE__))
+                      endif
+                      call retire_treefall_residual(currentSite, retirement%donor, retirement_receiver, &
+                           retirement%original_area, dtype_ifall+1, bc_in)
+                      deallocate(retirement)
+                      retirements => next_retirement
+                   enddo
 
                    ! sort out the cohorts, since some of them may be so small as to need removing.
                    ! the first call to terminate cohorts removes sparse number densities,
@@ -1423,6 +1513,28 @@ contains
        end do disturbance_type_loop
 
     end do nocomp_pft_loop
+
+    ! Also handle unresolved remnants already present in a restart, after ordinary
+    ! disturbance has been settled and before categorical remapping.
+    currentPatch => currentSite%oldest_patch
+    do while (associated(currentPatch))
+       temp_patch => currentPatch%younger
+       if (unresolved_treefall_residual(currentSite, currentPatch, 0._r8)) then
+          call find_retirement_receiver(currentSite, currentPatch, retirement_receiver)
+          if (associated(retirement_receiver)) then
+             oldarea = currentPatch%area
+             call retire_treefall_residual(currentSite, currentPatch, retirement_receiver, &
+                  oldarea, N_DIST_TYPES+1, bc_in)
+          else
+             ! Orphan (option C): no resolved patch shares its labels, so kill its
+             ! vegetation in place and keep the empty patch with its labels.
+             call empty_orphan_in_place(currentSite, currentPatch, bc_in)
+          endif
+       endif
+       currentPatch => temp_patch
+    enddo
+    call check_patch_area(currentSite)
+    call set_patchno(currentSite,.false.,0)
 
     nocomp_and_luh_if: if ( hlm_use_nocomp .eq. itrue .and. hlm_use_luh .eq. itrue ) then
        ! disturbance has just happened, and now the nocomp PFT identities of the newly-disturbed patches
@@ -1719,11 +1831,323 @@ contains
     do while(associated(currentPatch))
        currentPatch%disturbance_rates(:) = 0._r8
        currentPatch%fract_ldist_not_harvested = 0._r8
+       ! BEGIN DEBUG 2STREAM-TINY-PATCH
+       if(currentPatch%area < rsnbl_math_prec*area_site) then
+          write(fates_log(),*) 'spawn_patches: tiny patch EXIT'
+          write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
+          write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+          write(fates_log(),*) 'patch area: ',currentPatch%area
+          currentCohort => currentPatch%shortest
+          do while(associated(currentCohort))
+             write(fates_log(),*) 'cohort pft/n/cached c_area: ', &
+                  currentCohort%pft,currentCohort%n,currentCohort%c_area
+             currentCohort => currentCohort%taller
+          end do
+       end if
+       ! END DEBUG 2STREAM-TINY-PATCH
        currentPatch => currentPatch%younger
     end do
 
     return
   end subroutine spawn_patches
+
+  ! -----------------------------------------------------------------------------------------
+
+  logical function unresolved_treefall_residual(csite, cpatch, disturbed_area, crown_area) result(unresolved)
+    type(ed_site_type), intent(in) :: csite
+    type(fates_patch_type), intent(in) :: cpatch
+    real(r8), intent(in) :: disturbed_area
+    real(r8), intent(out), optional :: crown_area
+
+    type(fates_cohort_type), pointer :: cohort
+    real(r8) :: residual_area, surviving_crown, crown, survivors, dbh
+
+    unresolved = .false.
+    if (present(crown_area)) crown_area = 0._r8
+    residual_area = cpatch%area - disturbed_area
+    if (residual_area <= 0._r8 .or. residual_area >= rsnbl_math_prec*area_site) return
+
+    surviving_crown = 0._r8
+    cohort => cpatch%shortest
+    do while (associated(cohort))
+       if (cohort%canopy_layer == ican_upper .and. cohort%n > 0._r8) then
+          survivors = cohort%n
+          if (disturbed_area > 0._r8) then
+             survivors = survivors * (1._r8 - mortality_disturbance_fraction * &
+                  min(1._r8, cohort%dmort * hlm_freq_day))
+          endif
+          dbh = cohort%dbh
+          crown = 0._r8
+          call carea_allom(dbh, survivors, csite%spread, cohort%pft, cohort%crowndamage, crown)
+          surviving_crown = surviving_crown + crown
+       endif
+       cohort => cohort%taller
+    enddo
+    if (present(crown_area)) crown_area = surviving_crown
+    unresolved = surviving_crown > 2._r8*residual_area
+  end function unresolved_treefall_residual
+
+  ! -----------------------------------------------------------------------------------------
+
+  subroutine find_retirement_receiver(csite, donor, receiver, preferred, before_treefall)
+    type(ed_site_type), intent(in) :: csite
+    type(fates_patch_type), intent(in), target :: donor
+    type(fates_patch_type), pointer :: receiver
+    type(fates_patch_type), pointer, optional :: preferred
+    logical, intent(in), optional :: before_treefall
+
+    nullify(receiver)
+    if (present(preferred)) then
+       if (associated(preferred)) then
+          if (compatible_retirement_receiver(donor, preferred)) then
+             receiver => preferred
+             return
+          endif
+       endif
+    endif
+    receiver => csite%oldest_patch
+    do while (associated(receiver))
+       if (.not. associated(receiver, donor)) then
+          if (compatible_retirement_receiver(donor, receiver)) then
+             if (present(before_treefall)) then
+                if (before_treefall) then
+                   if (receiver%area*(1._r8-receiver%disturbance_rates(dtype_ifall)) < &
+                        rsnbl_math_prec*area_site) then
+                      receiver => receiver%younger
+                      cycle
+                   endif
+                endif
+             endif
+             return
+          endif
+       endif
+       receiver => receiver%younger
+    enddo
+  end subroutine find_retirement_receiver
+
+  logical function compatible_retirement_receiver(donor, receiver) result(compatible)
+    type(fates_patch_type), intent(in) :: donor, receiver
+
+    compatible = receiver%area >= rsnbl_math_prec*area_site .and. &
+         receiver%land_use_label == donor%land_use_label .and. &
+         receiver%nocomp_pft_label == donor%nocomp_pft_label .and. &
+         (receiver%changed_landuse_this_ts .eqv. donor%changed_landuse_this_ts)
+  end function compatible_retirement_receiver
+
+  ! -----------------------------------------------------------------------------------------
+
+  subroutine find_cross_label_receiver(csite, donor, receiver)
+    ! Largest resolved, non-bare-ground patch with the donor's land use;
+    ! if none exists, the largest such patch on the site.
+    type(ed_site_type), intent(in) :: csite
+    type(fates_patch_type), intent(in), target :: donor
+    type(fates_patch_type), pointer :: receiver
+
+    type(fates_patch_type), pointer :: candidate, largest_any
+
+    nullify(receiver, largest_any)
+    candidate => csite%oldest_patch
+    do while (associated(candidate))
+       if (.not. associated(candidate, donor) .and. cross_label_receiver_ok(candidate)) then
+          if (candidate%land_use_label == donor%land_use_label) then
+             if (.not. associated(receiver)) then
+                receiver => candidate
+             elseif (candidate%area > receiver%area) then
+                receiver => candidate
+             endif
+          endif
+          if (.not. associated(largest_any)) then
+             largest_any => candidate
+          elseif (candidate%area > largest_any%area) then
+             largest_any => candidate
+          endif
+       endif
+       candidate => candidate%younger
+    enddo
+    if (.not. associated(receiver)) receiver => largest_any
+  end subroutine find_cross_label_receiver
+
+  logical function cross_label_receiver_ok(receiver) result(ok)
+    type(fates_patch_type), intent(in) :: receiver
+
+    ok = receiver%area >= rsnbl_math_prec*area_site .and. &
+         receiver%nocomp_pft_label /= nocomp_bareground
+  end function cross_label_receiver_ok
+
+  ! -----------------------------------------------------------------------------------------
+
+  subroutine log_retirement_deferral(csite, donor)
+    type(ed_site_type), intent(in) :: csite
+    type(fates_patch_type), intent(in) :: donor
+
+    ! BEGIN DEBUG RESIDUAL-RETIREMENT
+    write(fates_log(),*) 'residual retirement DEFERRED: no resolved compatible receiver'
+    write(fates_log(),*) 'lat/lon, patchno: ',csite%lat,csite%lon,donor%patchno
+    write(fates_log(),*) 'landuse/nocomp pft, area: ',donor%land_use_label,donor%nocomp_pft_label,donor%area
+    ! END DEBUG RESIDUAL-RETIREMENT
+  end subroutine log_retirement_deferral
+
+  ! -----------------------------------------------------------------------------------------
+
+  subroutine retire_treefall_residual(csite, donor, receiver, original_area, first_pending, bc_in, cross_label)
+    use EDCohortDynamicsMod, only : terminate_cohort
+    use FatesConstantsMod, only : i_term_mort_type_canlev
+
+    type(ed_site_type), intent(inout) :: csite
+    type(fates_patch_type), pointer :: donor, receiver
+    real(r8), intent(in) :: original_area
+    integer, intent(in) :: first_pending
+    type(bc_in_type), intent(in) :: bc_in
+    logical, intent(in), optional :: cross_label
+
+    type(fates_cohort_type), pointer :: cohort, next_cohort
+    real(r8) :: combined_area, terminated_mass(num_elements), terminated_n, surviving_crown
+    logical :: unresolved, crossing
+    integer :: el, i_dist
+    integer :: donor_lu, donor_nocomp
+
+    crossing = .false.
+    if (present(cross_label)) crossing = cross_label
+
+    if (crossing) then
+       ! Rates of different labels must not be merged; only the post-disturbance sweep may cross.
+       if (associated(receiver, donor) .or. .not. cross_label_receiver_ok(receiver) .or. &
+            first_pending < N_DIST_TYPES) then
+          write(fates_log(),*) 'retire_treefall_residual: invalid cross-label receiver or call'
+          call endrun(msg=errMsg(sourcefile, __LINE__))
+       endif
+    elseif (.not. compatible_retirement_receiver(donor, receiver)) then
+       write(fates_log(),*) 'retire_treefall_residual: incompatible or unresolved receiver'
+       call endrun(msg=errMsg(sourcefile, __LINE__))
+    endif
+    donor_lu = donor%land_use_label
+    donor_nocomp = donor%nocomp_pft_label
+    unresolved = unresolved_treefall_residual(csite, donor, 0._r8, surviving_crown)
+    if (.not. unresolved) then
+       write(fates_log(),*) 'retire_treefall_residual: donor does not satisfy retirement trigger'
+       call endrun(msg=errMsg(sourcefile, __LINE__))
+    endif
+    combined_area = receiver%area + donor%area
+    if (first_pending < N_DIST_TYPES) then
+       do i_dist = first_pending, N_DIST_TYPES-1
+          receiver%disturbance_rates(i_dist) = &
+               (receiver%disturbance_rates(i_dist)*receiver%area + &
+               donor%disturbance_rates(i_dist)*original_area) / combined_area
+       enddo
+       receiver%landuse_transition_rates(:) = &
+            (receiver%landuse_transition_rates(:)*receiver%area + &
+            donor%landuse_transition_rates(:)*original_area) / combined_area
+    endif
+
+    terminated_mass(:) = 0._r8
+    terminated_n = 0._r8
+    cohort => donor%shortest
+    nullify(donor%shortest, donor%tallest)
+    do while (associated(cohort))
+       next_cohort => cohort%taller
+       do el = 1,num_elements
+          terminated_mass(el) = terminated_mass(el) + cohort%n * ( &
+               cohort%prt%GetState(leaf_organ, element_list(el)) + &
+               cohort%prt%GetState(fnrt_organ, element_list(el)) + &
+               cohort%prt%GetState(sapw_organ, element_list(el)) + &
+               cohort%prt%GetState(store_organ, element_list(el)) + &
+               cohort%prt%GetState(struct_organ, element_list(el)) + &
+               cohort%prt%GetState(repro_organ, element_list(el)))
+       enddo
+       terminated_n = terminated_n + cohort%n
+       call receiver%InsertCohort(cohort)
+       call terminate_cohort(csite, receiver, cohort, bc_in, i_term_mort_type_canlev)
+       deallocate(cohort, stat=istat, errmsg=smsg)
+       if (istat /= 0) then
+          write(fates_log(),*) 'retire_treefall_residual: cohort deallocation failed: '//trim(smsg)
+          call endrun(msg=errMsg(sourcefile, __LINE__))
+       endif
+       cohort => next_cohort
+    enddo
+
+    ! BEGIN DEBUG RESIDUAL-RETIREMENT
+    write(fates_log(),*) 'residual retirement: site-negligible, upper crown > twice residual area'
+    write(fates_log(),*) 'lat/lon: ',csite%lat,csite%lon
+    write(fates_log(),*) 'donor/receiver patchno: ',donor%patchno,receiver%patchno
+    write(fates_log(),*) 'landuse/nocomp pft: ',donor%land_use_label,donor%nocomp_pft_label
+    write(fates_log(),*) 'original/residual/receiver area: ',original_area,donor%area,receiver%area
+    write(fates_log(),*) 'surviving upper crown area/first pending disturbance: ',surviving_crown,first_pending
+    write(fates_log(),*) 'numerical retirement individuals: ',terminated_n
+    write(fates_log(),*) 'numerical retirement element ids: ',element_list(:)
+    write(fates_log(),*) 'numerical retirement element mass [kg]: ',terminated_mass(:)
+    if (crossing) then
+       write(fates_log(),'(A,2F10.4,4I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT CROSS-LABEL', &
+            csite%lat,csite%lon,donor_lu,donor_nocomp, &
+            receiver%land_use_label,receiver%nocomp_pft_label, &
+            donor%area,receiver%area,surviving_crown,terminated_n
+    endif
+    ! END DEBUG RESIDUAL-RETIREMENT
+
+    if (crossing) then
+       ! The donor is now empty; adopt the receiver's categories so it can be fused,
+       ! as terminate_patches does when removing a below-minimum land use.
+       donor%land_use_label = receiver%land_use_label
+       donor%nocomp_pft_label = receiver%nocomp_pft_label
+       donor%age_since_anthro_disturbance = receiver%age_since_anthro_disturbance
+       donor%changed_landuse_this_ts = receiver%changed_landuse_this_ts
+    endif
+
+    call fuse_2_patches(csite, donor, receiver)
+    nullify(donor)
+  end subroutine retire_treefall_residual
+
+  ! -----------------------------------------------------------------------------------------
+
+  subroutine empty_orphan_in_place(csite, cpatch, bc_in)
+    ! Terminate all cohorts of an unresolved overfull patch into its own litter.
+    ! Area and labels are unchanged; the patch stays as an empty (bare) patch.
+    use EDCohortDynamicsMod, only : terminate_cohort
+    use FatesConstantsMod, only : i_term_mort_type_canlev
+
+    type(ed_site_type), intent(inout) :: csite
+    type(fates_patch_type), pointer :: cpatch
+    type(bc_in_type), intent(in) :: bc_in
+
+    type(fates_cohort_type), pointer :: cohort, next_cohort
+    real(r8) :: terminated_mass, terminated_n, surviving_crown
+    logical :: unresolved
+
+    unresolved = unresolved_treefall_residual(csite, cpatch, 0._r8, surviving_crown)
+    if (.not. unresolved) then
+       write(fates_log(),*) 'empty_orphan_in_place: patch does not satisfy retirement trigger'
+       call endrun(msg=errMsg(sourcefile, __LINE__))
+    endif
+
+    terminated_mass = 0._r8
+    terminated_n = 0._r8
+    cohort => cpatch%shortest
+    do while (associated(cohort))
+       next_cohort => cohort%taller
+       terminated_mass = terminated_mass + cohort%n * ( &
+            cohort%prt%GetState(leaf_organ, carbon12_element) + &
+            cohort%prt%GetState(fnrt_organ, carbon12_element) + &
+            cohort%prt%GetState(sapw_organ, carbon12_element) + &
+            cohort%prt%GetState(store_organ, carbon12_element) + &
+            cohort%prt%GetState(struct_organ, carbon12_element) + &
+            cohort%prt%GetState(repro_organ, carbon12_element))
+       terminated_n = terminated_n + cohort%n
+       call terminate_cohort(csite, cpatch, cohort, bc_in, i_term_mort_type_canlev)
+       deallocate(cohort, stat=istat, errmsg=smsg)
+       if (istat /= 0) then
+          write(fates_log(),*) 'empty_orphan_in_place: cohort deallocation failed: '//trim(smsg)
+          call endrun(msg=errMsg(sourcefile, __LINE__))
+       endif
+       cohort => next_cohort
+    enddo
+    cpatch%total_canopy_area = 0._r8
+    cpatch%total_tree_area = 0._r8
+
+    ! BEGIN DEBUG RESIDUAL-RETIREMENT
+    write(fates_log(),'(A,2F10.4,2I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT EMPTY-IN-PLACE', &
+         csite%lat,csite%lon,cpatch%land_use_label,cpatch%nocomp_pft_label, &
+         cpatch%area,surviving_crown,terminated_n,terminated_mass
+    ! END DEBUG RESIDUAL-RETIREMENT
+  end subroutine empty_orphan_in_place
 
   ! -----------------------------------------------------------------------------------------
 
@@ -1745,6 +2169,9 @@ contains
     type (fates_cohort_type), pointer :: currentCohort
     integer  :: pft
     real(r8) :: temp_area
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
+    logical :: log_small_split
+    ! END DEBUG 2STREAM-TINY-PATCH
 
     temp_area = 0._r8
     if (present(area_to_remove)) then
@@ -1752,6 +2179,20 @@ contains
     else
        temp_area = currentPatch%area - (currentPatch%area * fraction_to_keep)
     end if
+
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
+    log_small_split = min(temp_area,currentPatch%area-temp_area) < rsnbl_math_prec*area_site
+    if(log_small_split) then
+       write(fates_log(),*) 'split_patch: tiny split BEFORE'
+       write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' donor patchno: ',currentPatch%patchno
+       write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+       write(fates_log(),*) 'donor area: ',currentPatch%area,' removed area: ',temp_area
+       write(fates_log(),*) 'fraction_to_keep: ',fraction_to_keep,' complement: ',1._r8-fraction_to_keep
+       if(currentPatch%area > 0._r8) then
+          write(fates_log(),*) 'removed area fraction: ',temp_area/currentPatch%area
+       end if
+    end if
+    ! END DEBUG 2STREAM-TINY-PATCH
 
     ! first we need to make the new patch
     call new_patch%Create(0._r8, temp_area, &
@@ -1804,11 +2245,25 @@ contains
        ! is the curent cohort that stays in the donor patch (currentPatch)
        call currentCohort%Copy(nc)
 
+       ! BEGIN DEBUG 2STREAM-TINY-PATCH
+             if(log_small_split) then
+           write(fates_log(),*) 'split_patch: cohort BEFORE pft/n/c_area: ', &
+                currentCohort%pft,currentCohort%n,currentCohort%c_area
+             end if
+       ! END DEBUG 2STREAM-TINY-PATCH
+
        ! Number of members in the new patch
        nc%n = currentCohort%n * (1._r8 - fraction_to_keep)
 
        ! loss of individuals from source patch due to area shrinking
        currentCohort%n = currentCohort%n * fraction_to_keep
+
+       ! BEGIN DEBUG 2STREAM-TINY-PATCH
+       if(log_small_split) then
+          write(fates_log(),*) 'split_patch: cohort AFTER donor/receiver n: ',currentCohort%n,nc%n
+          write(fates_log(),*) 'split_patch: donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
+       end if
+       ! END DEBUG 2STREAM-TINY-PATCH
 
        call new_patch%InsertCohort(nc)
 
@@ -1821,6 +2276,12 @@ contains
 
     !update area of donor patch
     currentPatch%area = currentPatch%area - temp_area
+
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
+    if(log_small_split) then
+       write(fates_log(),*) 'split_patch: tiny split AFTER donor/receiver area: ',currentPatch%area,new_patch%area
+    end if
+    ! END DEBUG 2STREAM-TINY-PATCH
 
   end subroutine split_patch
 
@@ -3237,7 +3698,7 @@ contains
     ! This function fuses the two patches specified in the argument.
     ! It fuses the first patch in the argument (the "donor") into the second
     ! patch in the argument (the "recipient"), and frees the memory 
-    ! associated with the secnd patch
+    ! associated with the donor patch.
     !
     ! !USES:
     use FatesSizeAgeTypeIndicesMod, only: get_age_class_index
@@ -3419,6 +3880,9 @@ contains
     type(fates_patch_type), pointer :: youngerPatch
     type(fates_patch_type), pointer :: patchpointer
     type(fates_patch_type), pointer :: largest_patch
+    ! BEGIN DEBUG 2STREAM-TINY-PATCH
+    type(fates_cohort_type), pointer :: diagnostic_cohort
+    ! END DEBUG 2STREAM-TINY-PATCH
     integer, parameter           :: max_cycles = 10  ! After 10 loops through
                                                      ! You should had fused
     integer                      :: count_cycles
@@ -3649,6 +4113,20 @@ contains
              currentPatch => currentSite%youngest_patch
           else
              write(fates_log(),*) 'this isnt because the land use was less than allowed'
+             ! BEGIN DEBUG 2STREAM-TINY-PATCH
+             write(fates_log(),*) 'terminate_patches: unresolved tiny patch RETAINED'
+             write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
+             write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+             write(fates_log(),*) 'area/min_patch_area/min_patch_area_forced: ', &
+                  currentPatch%area,min_patch_area,min_patch_area_forced
+             write(fates_log(),*) 'total_canopy_area (cached): ',currentPatch%total_canopy_area
+             diagnostic_cohort => currentPatch%shortest
+             do while(associated(diagnostic_cohort))
+                write(fates_log(),*) 'cohort pft/layer/n/cached c_area: ',diagnostic_cohort%pft, &
+                     diagnostic_cohort%canopy_layer,diagnostic_cohort%n,diagnostic_cohort%c_area
+                diagnostic_cohort => diagnostic_cohort%taller
+             end do
+             ! END DEBUG 2STREAM-TINY-PATCH
 
              !call endrun(msg=errMsg(sourcefile, __LINE__))
           
