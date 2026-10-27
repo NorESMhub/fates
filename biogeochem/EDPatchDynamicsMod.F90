@@ -108,6 +108,7 @@ module EDPatchDynamicsMod
   use FatesRunningMeanMod,    only : ema_sdlng_emerg_h2o, ema_sdlng_mort_par, ema_sdlng2sap_par
   use FatesRunningMeanMod,    only : ema_24hr, fixed_24hr, ema_lpa, ema_longterm
   use FatesRadiationMemMod,   only : num_swb
+  use EDCohortDynamicsMod  , only : terminate_cohorts
 
   ! CIME globals
   use shr_infnan_mod       , only : nan => shr_infnan_nan, assignment(=)
@@ -504,7 +505,6 @@ contains
     ! !USES:
 
     use EDParamsMod          , only : ED_val_understorey_death, logging_coll_under_frac
-    use EDCohortDynamicsMod  , only : terminate_cohorts
     use FatesConstantsMod    , only : rsnbl_math_prec
     use FatesLandUseChangeMod, only : GetLanduseChangeRules
     !
@@ -3414,7 +3414,7 @@ contains
     ! !ARGUMENTS:
     type(ed_site_type), target, intent(inout) :: csite
     type(bc_in_type), intent(in)              :: bc_in
-    real(r8),intent(in)                       :: min_area ! minimum allowable patch area [m2]
+    real(r8),intent(in), optional                       :: min_area ! minimum allowable patch area [m2]
     !
     ! !LOCAL VARIABLES:
     type(fates_patch_type), pointer :: cpatch        ! current patch
@@ -3641,8 +3641,8 @@ contains
     write(fates_log(),*) 'driver data landuse state vector: ', state_vector_driver
     write(fates_log(),*) 'min_allowed_landuse_fraction: ', currentSite%min_allowed_landuse_fraction
     write(fates_log(),*) 'landuse_vector_gt_min: ', currentSite%landuse_vector_gt_min
-    do i_landuse = 1, n_landuse_cats
-       write(fates_log(),*) 'trans matrix from: ', i_landuse, currentSite%landuse_transition_matrix(i_landuse,:)
+    do i_landuse_cats = 1, n_landuse_cats
+       write(fates_log(),*) 'trans matrix from: ', i_landuse_cats, currentSite%landuse_transition_matrix(i_landuse_cats,:)
     end do
     
     return
