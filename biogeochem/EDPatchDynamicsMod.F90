@@ -3421,6 +3421,7 @@ contains
     type(fates_patch_type), pointer :: npatch        ! next patch
     type(fates_patch_type), pointer :: opatch        ! older patch
     type(fates_patch_type), pointer :: ypatch        ! younger patch
+    type(fates_patch_type), pointer :: next_candidate ! candidate after possible fusion
 
     integer, parameter           :: max_cycles = 10  ! After 10 loops through
     ! You should had fused
@@ -3453,19 +3454,15 @@ contains
 
           nocomp_if: if (hlm_use_nocomp .eq. itrue) then
 
-             icycles = 0
-             do while(icycles<max_cycles .and. cpatch%area <= min_patch_area_forced )
-                opatch => csite%youngest_patch
-                do while(associated(opatch))
-                   if ( .not.associated(cpatch,opatch) .and. &
-                        opatch%nocomp_pft_label .eq. cpatch%nocomp_pft_label .and. &
-                        opatch%land_use_label .eq. cpatch%land_use_label) then
-                      call fuse_2_patches(csite, opatch, cpatch)
-                   else
-                      opatch => opatch%older
-                   endif
-                end do
-                icycles=icycles+1
+             opatch => csite%youngest_patch
+             do while(associated(opatch) .and. cpatch%area <= min_patch_area_forced)
+                next_candidate => opatch%older
+                if ( .not.associated(cpatch,opatch) .and. &
+                     opatch%nocomp_pft_label .eq. cpatch%nocomp_pft_label .and. &
+                     opatch%land_use_label .eq. cpatch%land_use_label) then
+                   call fuse_2_patches(csite, opatch, cpatch)
+                endif
+                opatch => next_candidate
              end do
                 
           else
@@ -3558,6 +3555,7 @@ contains
     type(fates_patch_type), pointer :: largestPatch
     type(fates_patch_type), pointer :: currentPatch
     real(r8) :: max_area  ! area of the largest patch [m2]
+    integer :: original_land_use_label
     
     ! first find the largest patch on the site
     currentPatch => currentSite%youngest_patch
@@ -3579,7 +3577,6 @@ contains
     ! Since its the largest, there is no point in fusing or ditching
     if(associated(smallPatch,largestPatch))then
        call terminate_cohorts(currentSite, smallPatch, 4, 41, bc_in)
-       currentSite%landuse_vector_gt_min(smallPatch%land_use_label) = .false.
        return
     end if
     
@@ -3590,11 +3587,21 @@ contains
        end if
        ! fuse_2_patches enforces pft label matching
        smallPatch%nocomp_pft_label = largestPatch%nocomp_pft_label
-       ! flag that the small-patch's landuse classification is no longer
-       ! present now, set it before we chnage the landuse-label before fusion
-       currentSite%landuse_vector_gt_min(smallPatch%land_use_label) = .false.
+       original_land_use_label = smallPatch%land_use_label
        smallPatch%land_use_label = largestPatch%land_use_label
        call fuse_2_patches(currentSite, smallPatch, largestPatch)
+
+       if (original_land_use_label .ne. largestPatch%land_use_label) then
+          currentPatch => currentSite%youngest_patch
+          do while(associated(currentPatch))
+             if (currentPatch%land_use_label .eq. original_land_use_label) exit
+             currentPatch => currentPatch%older
+          end do
+          ! A remaining patch must not trigger LU first-exceedance initialization again.
+          if (.not. associated(currentPatch)) then
+             currentSite%landuse_vector_gt_min(original_land_use_label) = .false.
+          endif
+       endif
     end if
     
     return
