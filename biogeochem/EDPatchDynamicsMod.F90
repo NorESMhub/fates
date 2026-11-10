@@ -1949,60 +1949,22 @@ contains
 
   ! -----------------------------------------------------------------------------------------
 
-  subroutine find_cross_label_receiver(csite, donor, receiver)
-    ! Largest resolved, non-bare-ground patch with the donor's land use;
-    ! if none exists, the largest such patch on the site.
-    type(ed_site_type), intent(in) :: csite
-    type(fates_patch_type), intent(in), target :: donor
-    type(fates_patch_type), pointer :: receiver
-
-    type(fates_patch_type), pointer :: candidate, largest_any
-
-    nullify(receiver, largest_any)
-    candidate => csite%oldest_patch
-    do while (associated(candidate))
-       if (.not. associated(candidate, donor) .and. cross_label_receiver_ok(candidate)) then
-          if (candidate%land_use_label == donor%land_use_label) then
-             if (.not. associated(receiver)) then
-                receiver => candidate
-             elseif (candidate%area > receiver%area) then
-                receiver => candidate
-             endif
-          endif
-          if (.not. associated(largest_any)) then
-             largest_any => candidate
-          elseif (candidate%area > largest_any%area) then
-             largest_any => candidate
-          endif
-       endif
-       candidate => candidate%younger
-    enddo
-    if (.not. associated(receiver)) receiver => largest_any
-  end subroutine find_cross_label_receiver
-
-  logical function cross_label_receiver_ok(receiver) result(ok)
-    type(fates_patch_type), intent(in) :: receiver
-
-    ok = receiver%area >= rsnbl_math_prec*area_site .and. &
-         receiver%nocomp_pft_label /= nocomp_bareground
-  end function cross_label_receiver_ok
-
-  ! -----------------------------------------------------------------------------------------
-
   subroutine log_retirement_deferral(csite, donor)
     type(ed_site_type), intent(in) :: csite
     type(fates_patch_type), intent(in) :: donor
 
     ! BEGIN DEBUG RESIDUAL-RETIREMENT
-    write(fates_log(),*) 'residual retirement DEFERRED: no resolved compatible receiver'
-    write(fates_log(),*) 'lat/lon, patchno: ',csite%lat,csite%lon,donor%patchno
-    write(fates_log(),*) 'landuse/nocomp pft, area: ',donor%land_use_label,donor%nocomp_pft_label,donor%area
+    if (debug) then
+       write(fates_log(),*) 'residual retirement DEFERRED: no resolved compatible receiver'
+       write(fates_log(),*) 'lat/lon, patchno: ',csite%lat,csite%lon,donor%patchno
+       write(fates_log(),*) 'landuse/nocomp pft, area: ',donor%land_use_label,donor%nocomp_pft_label,donor%area
+    endif
     ! END DEBUG RESIDUAL-RETIREMENT
   end subroutine log_retirement_deferral
 
   ! -----------------------------------------------------------------------------------------
 
-  subroutine retire_treefall_residual(csite, donor, receiver, original_area, first_pending, bc_in, cross_label)
+  subroutine retire_treefall_residual(csite, donor, receiver, original_area, first_pending, bc_in)
     ! first_pending: index of the first disturbance type whose rates have not yet been
     ! applied this step. Rates in first_pending:N_DIST_TYPES-1 and the land-use
     ! transition rates are area-weighted into the receiver; already-applied types are
@@ -2015,30 +1977,16 @@ contains
     real(r8), intent(in) :: original_area
     integer, intent(in) :: first_pending
     type(bc_in_type), intent(in) :: bc_in
-    logical, intent(in), optional :: cross_label
 
     type(fates_cohort_type), pointer :: cohort, next_cohort
     real(r8) :: combined_area, terminated_mass(num_elements), terminated_n, surviving_crown
-    logical :: unresolved, crossing
+    logical :: unresolved
     integer :: el, i_dist
-    integer :: donor_lu, donor_nocomp
 
-    crossing = .false.
-    if (present(cross_label)) crossing = cross_label
-
-    if (crossing) then
-       ! Rates of different labels must not be merged; only the post-disturbance sweep may cross.
-       if (associated(receiver, donor) .or. .not. cross_label_receiver_ok(receiver) .or. &
-            first_pending < N_DIST_TYPES) then
-          write(fates_log(),*) 'retire_treefall_residual: invalid cross-label receiver or call'
-          call endrun(msg=errMsg(sourcefile, __LINE__))
-       endif
-    elseif (.not. compatible_retirement_receiver(donor, receiver)) then
+    if (.not. compatible_retirement_receiver(donor, receiver)) then
        write(fates_log(),*) 'retire_treefall_residual: incompatible or unresolved receiver'
        call endrun(msg=errMsg(sourcefile, __LINE__))
     endif
-    donor_lu = donor%land_use_label
-    donor_nocomp = donor%nocomp_pft_label
     unresolved = unresolved_treefall_residual(csite, donor, 0._r8, surviving_crown)
     if (.not. unresolved) then
        write(fates_log(),*) 'retire_treefall_residual: donor does not satisfy retirement trigger'
@@ -2083,31 +2031,18 @@ contains
     enddo
 
     ! BEGIN DEBUG RESIDUAL-RETIREMENT
-    write(fates_log(),*) 'residual retirement: site-negligible, upper crown > twice residual area'
-    write(fates_log(),*) 'lat/lon: ',csite%lat,csite%lon
-    write(fates_log(),*) 'donor/receiver patchno: ',donor%patchno,receiver%patchno
-    write(fates_log(),*) 'landuse/nocomp pft: ',donor%land_use_label,donor%nocomp_pft_label
-    write(fates_log(),*) 'original/residual/receiver area: ',original_area,donor%area,receiver%area
-    write(fates_log(),*) 'surviving upper crown area/first pending disturbance: ',surviving_crown,first_pending
-    write(fates_log(),*) 'numerical retirement individuals: ',terminated_n
-    write(fates_log(),*) 'numerical retirement element ids: ',element_list(:)
-    write(fates_log(),*) 'numerical retirement element mass [kg]: ',terminated_mass(:)
-    if (crossing) then
-       write(fates_log(),'(A,2F10.4,4I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT CROSS-LABEL', &
-            csite%lat,csite%lon,donor_lu,donor_nocomp, &
-            receiver%land_use_label,receiver%nocomp_pft_label, &
-            donor%area,receiver%area,surviving_crown,terminated_n
+    if (debug) then
+       write(fates_log(),*) 'residual retirement: site-negligible, upper crown > twice residual area'
+       write(fates_log(),*) 'lat/lon: ',csite%lat,csite%lon
+       write(fates_log(),*) 'donor/receiver patchno: ',donor%patchno,receiver%patchno
+       write(fates_log(),*) 'landuse/nocomp pft: ',donor%land_use_label,donor%nocomp_pft_label
+       write(fates_log(),*) 'original/residual/receiver area: ',original_area,donor%area,receiver%area
+       write(fates_log(),*) 'surviving upper crown area/first pending disturbance: ',surviving_crown,first_pending
+       write(fates_log(),*) 'numerical retirement individuals: ',terminated_n
+       write(fates_log(),*) 'numerical retirement element ids: ',element_list(:)
+       write(fates_log(),*) 'numerical retirement element mass [kg]: ',terminated_mass(:)
     endif
     ! END DEBUG RESIDUAL-RETIREMENT
-
-    if (crossing) then
-       ! The donor is now empty; adopt the receiver's categories so it can be fused,
-       ! as terminate_patches does when removing a below-minimum land use.
-       donor%land_use_label = receiver%land_use_label
-       donor%nocomp_pft_label = receiver%nocomp_pft_label
-       donor%age_since_anthro_disturbance = receiver%age_since_anthro_disturbance
-       donor%changed_landuse_this_ts = receiver%changed_landuse_this_ts
-    endif
 
     call fuse_2_patches(csite, donor, receiver)
     nullify(donor)
@@ -2160,9 +2095,11 @@ contains
     cpatch%total_tree_area = 0._r8
 
     ! BEGIN DEBUG RESIDUAL-RETIREMENT
-    write(fates_log(),'(A,2F10.4,2I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT EMPTY-IN-PLACE', &
-         csite%lat,csite%lon,cpatch%land_use_label,cpatch%nocomp_pft_label, &
-         cpatch%area,surviving_crown,terminated_n,terminated_mass
+    if (debug) then
+       write(fates_log(),'(A,2F10.4,2I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT EMPTY-IN-PLACE', &
+            csite%lat,csite%lon,cpatch%land_use_label,cpatch%nocomp_pft_label, &
+            cpatch%area,surviving_crown,terminated_n,terminated_mass
+    endif
     ! END DEBUG RESIDUAL-RETIREMENT
   end subroutine empty_orphan_in_place
 
