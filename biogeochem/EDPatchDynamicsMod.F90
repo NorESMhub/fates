@@ -1486,8 +1486,12 @@ contains
                          write(fates_log(),*) 'spawn_patches: lost residual retirement receiver'
                          call endrun(msg=errMsg(sourcefile, __LINE__))
                       endif
+                      ! Retirements are only queued while processing treefall, so the
+                      ! donor's rates for every later disturbance type are still pending
+                      ! and must be area-weighted into the receiver (same range as the
+                      ! renormalization loop over i_disturbance_type+1 above).
                       call retire_treefall_residual(currentSite, retirement%donor, retirement_receiver, &
-                           retirement%original_area, dtype_ifall+1, bc_in)
+                           retirement%original_area, i_disturbance_type+1, bc_in)
                       deallocate(retirement)
                       retirements => next_retirement
                    enddo
@@ -1860,7 +1864,7 @@ contains
     real(r8), intent(out), optional :: crown_area
 
     type(fates_cohort_type), pointer :: cohort
-    real(r8) :: residual_area, surviving_crown, crown, survivors, dbh
+    real(r8) :: residual_area, surviving_crown, crown, survivors
 
     unresolved = .false.
     if (present(crown_area)) crown_area = 0._r8
@@ -1876,9 +1880,8 @@ contains
              survivors = survivors * (1._r8 - mortality_disturbance_fraction * &
                   min(1._r8, cohort%dmort * hlm_freq_day))
           endif
-          dbh = cohort%dbh
           crown = 0._r8
-          call carea_allom(dbh, survivors, csite%spread, cohort%pft, cohort%crowndamage, crown)
+          call carea_allom(cohort%dbh, survivors, csite%spread, cohort%pft, cohort%crowndamage, crown)
           surviving_crown = surviving_crown + crown
        endif
        cohort => cohort%taller
@@ -1890,11 +1893,24 @@ contains
   ! -----------------------------------------------------------------------------------------
 
   subroutine find_retirement_receiver(csite, donor, receiver, preferred, before_treefall)
+    ! Select a resolved patch with the donor's labels to absorb the donor's residual.
+    ! On exit, receiver is null when no such patch exists; callers test associated().
+    !
+    ! before_treefall: set when called from inside the treefall patch loop, i.e. before
+    ! every patch has donated its own treefall area. A candidate that is resolved now
+    ! but will fall below rsnbl_math_prec*area_site once its own pending treefall is
+    ! applied would itself become an unresolved residual, so it is not accepted.
     type(ed_site_type), intent(in) :: csite
     type(fates_patch_type), intent(in), target :: donor
     type(fates_patch_type), pointer :: receiver
     type(fates_patch_type), pointer, optional :: preferred
     logical, intent(in), optional :: before_treefall
+
+    type(fates_patch_type), pointer :: candidate
+    logical :: treefall_pending, acceptable
+
+    treefall_pending = .false.
+    if (present(before_treefall)) treefall_pending = before_treefall
 
     nullify(receiver)
     if (present(preferred)) then
@@ -1905,23 +1921,20 @@ contains
           endif
        endif
     endif
-    receiver => csite%oldest_patch
-    do while (associated(receiver))
-       if (.not. associated(receiver, donor)) then
-          if (compatible_retirement_receiver(donor, receiver)) then
-             if (present(before_treefall)) then
-                if (before_treefall) then
-                   if (receiver%area*(1._r8-receiver%disturbance_rates(dtype_ifall)) < &
-                        rsnbl_math_prec*area_site) then
-                      receiver => receiver%younger
-                      cycle
-                   endif
-                endif
-             endif
-             return
-          endif
+
+    candidate => csite%oldest_patch
+    do while (associated(candidate))
+       acceptable = .not. associated(candidate, donor)
+       if (acceptable) acceptable = compatible_retirement_receiver(donor, candidate)
+       if (acceptable .and. treefall_pending) then
+          acceptable = candidate%area*(1._r8-candidate%disturbance_rates(dtype_ifall)) >= &
+               rsnbl_math_prec*area_site
        endif
-       receiver => receiver%younger
+       if (acceptable) then
+          receiver => candidate
+          return
+       endif
+       candidate => candidate%younger
     enddo
   end subroutine find_retirement_receiver
 
@@ -1990,6 +2003,10 @@ contains
   ! -----------------------------------------------------------------------------------------
 
   subroutine retire_treefall_residual(csite, donor, receiver, original_area, first_pending, bc_in, cross_label)
+    ! first_pending: index of the first disturbance type whose rates have not yet been
+    ! applied this step. Rates in first_pending:N_DIST_TYPES-1 and the land-use
+    ! transition rates are area-weighted into the receiver; already-applied types are
+    ! left alone. Pass N_DIST_TYPES+1 (post-loop sweep) when nothing is pending.
     use EDCohortDynamicsMod, only : terminate_cohort
     use FatesConstantsMod, only : i_term_mort_type_canlev
 
