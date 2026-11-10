@@ -695,16 +695,16 @@ contains
                                          num_swb, numpft, currentSite%nlevsoil, hlm_current_tod,              &
                                          hlm_regeneration_model)
 
-                      ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                      if(site_areadis < rsnbl_math_prec*area_site) then
-                       write(fates_log(),*) 'spawn_patches: tiny patch CREATED'
-                       write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
-                       write(fates_log(),*) 'disturbance: ',i_disturbance_type,' nocomp pft: ',i_nocomp_pft
-                       write(fates_log(),*) 'donor/receiver landuse: ',i_donorpatch_landuse_type, &
-                          i_landusechange_receiverpatchlabel
-                       write(fates_log(),*) 'new area: ',site_areadis,' diagnostic area threshold: ', &
-                          rsnbl_math_prec*area_site,' nearzero: ',nearzero
-                      end if
+                      ! ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                      ! if(site_areadis < rsnbl_math_prec*area_site) then
+                      !  write(fates_log(),*) 'spawn_patches: tiny patch CREATED'
+                      !  write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
+                      !  write(fates_log(),*) 'disturbance: ',i_disturbance_type,' nocomp pft: ',i_nocomp_pft
+                      !  write(fates_log(),*) 'donor/receiver landuse: ',i_donorpatch_landuse_type, &
+                      !     i_landusechange_receiverpatchlabel
+                      !  write(fates_log(),*) 'new area: ',site_areadis,' diagnostic area threshold: ', &
+                      !     rsnbl_math_prec*area_site,' nearzero: ',nearzero
+                      ! end if
                       ! END DEBUG 2STREAM-TINY-PATCH
 
                    ! Initialize the litter pools to zero, these
@@ -839,18 +839,18 @@ contains
                             ! area modified number density into the new patch, and apply survivorship.
                             ! -------------------------------------------------------------------------
 
-                              ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                              if(site_areadis < rsnbl_math_prec*area_site) then
-                               write(fates_log(),*) 'spawn_patches: tiny patch transfer BEFORE'
-                               write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
-                               write(fates_log(),*) 'donor patchno: ',currentPatch%patchno, &
-                                  ' disturbance: ',i_disturbance_type
-                               write(fates_log(),*) 'donor/receiver landuse: ',currentPatch%land_use_label, &
-                                  newPatch%land_use_label,' nocomp pft: ',currentPatch%nocomp_pft_label
-                               write(fates_log(),*) 'donor/receiver area: ',currentPatch%area,newPatch%area
-                               write(fates_log(),*) 'transferred area: ',patch_site_areadis, &
-                                  ' fraction: ',patch_site_areadis/currentPatch%area
-                              end if
+                              ! ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                              ! if(site_areadis < rsnbl_math_prec*area_site) then
+                              !  write(fates_log(),*) 'spawn_patches: tiny patch transfer BEFORE'
+                              !  write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon
+                              !  write(fates_log(),*) 'donor patchno: ',currentPatch%patchno, &
+                              !     ' disturbance: ',i_disturbance_type
+                              !  write(fates_log(),*) 'donor/receiver landuse: ',currentPatch%land_use_label, &
+                              !     newPatch%land_use_label,' nocomp pft: ',currentPatch%nocomp_pft_label
+                              !  write(fates_log(),*) 'donor/receiver area: ',currentPatch%area,newPatch%area
+                              !  write(fates_log(),*) 'transferred area: ',patch_site_areadis, &
+                              !     ' fraction: ',patch_site_areadis/currentPatch%area
+                              ! end if
                               ! END DEBUG 2STREAM-TINY-PATCH
                             currentCohort => currentPatch%shortest
                             cohortloop: do while(associated(currentCohort))
@@ -875,12 +875,12 @@ contains
                                ! is the curent cohort that stays in the donor patch (currentPatch)
                                call currentCohort%Copy(nc)
 
-                               ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                               if(site_areadis < rsnbl_math_prec*area_site) then
-                                  write(fates_log(),*) 'spawn_patches: cohort BEFORE pft/layer: ', &
-                                       currentCohort%pft,currentCohort%canopy_layer
-                                  write(fates_log(),*) 'cohort n/c_area: ',currentCohort%n,currentCohort%c_area
-                               end if
+                               ! ! BEGIN DEBUG 2STREAM-TINY-PATCH
+                               ! if(site_areadis < rsnbl_math_prec*area_site) then
+                               !    write(fates_log(),*) 'spawn_patches: cohort BEFORE pft/layer: ', &
+                               !         currentCohort%pft,currentCohort%canopy_layer
+                               !    write(fates_log(),*) 'cohort n/c_area: ',currentCohort%n,currentCohort%c_area
+                               ! end if
                                ! END DEBUG 2STREAM-TINY-PATCH
 
                                !this is the case as the new patch probably doesn't have a closed canopy, and
@@ -1387,11 +1387,11 @@ contains
                                end select disttype_case    ! Select disturbance mode
 
                                ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                               if(site_areadis < rsnbl_math_prec*area_site) then
-                                  write(fates_log(),*) 'spawn_patches: cohort AFTER pft: ',currentCohort%pft
-                                  write(fates_log(),*) 'donor/receiver n: ',currentCohort%n,nc%n
-                                  write(fates_log(),*) 'donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
-                               end if
+                               ! if(site_areadis < rsnbl_math_prec*area_site) then
+                               !    write(fates_log(),*) 'spawn_patches: cohort AFTER pft: ',currentCohort%pft
+                               !    write(fates_log(),*) 'donor/receiver n: ',currentCohort%n,nc%n
+                               !    write(fates_log(),*) 'donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
+                               ! end if
                                ! END DEBUG 2STREAM-TINY-PATCH
 
                                ! if some plants in the new temporary cohort survived the transfer to the new patch,
@@ -1420,10 +1420,10 @@ contains
                             currentPatch%area = currentPatch%area - patch_site_areadis
 
                             ! BEGIN DEBUG 2STREAM-TINY-PATCH
-                            if(site_areadis < rsnbl_math_prec*area_site) then
-                               write(fates_log(),*) 'spawn_patches: tiny patch transfer AFTER donor area: ',currentPatch%area
-                               write(fates_log(),*) 'donor area subtraction unchanged: ',currentPatch%area==oldarea
-                            end if
+                            ! if(site_areadis < rsnbl_math_prec*area_site) then
+                            !    write(fates_log(),*) 'spawn_patches: tiny patch transfer AFTER donor area: ',currentPatch%area
+                            !    write(fates_log(),*) 'donor area subtraction unchanged: ',currentPatch%area==oldarea
+                            ! end if
                             ! END DEBUG 2STREAM-TINY-PATCH
 
                             ! for all disturbance rates that haven't been resolved yet, increase their amount so that
@@ -1836,18 +1836,18 @@ contains
        currentPatch%disturbance_rates(:) = 0._r8
        currentPatch%fract_ldist_not_harvested = 0._r8
        ! BEGIN DEBUG 2STREAM-TINY-PATCH
-       if(currentPatch%area < rsnbl_math_prec*area_site) then
-          write(fates_log(),*) 'spawn_patches: tiny patch EXIT'
-          write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
-          write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
-          write(fates_log(),*) 'patch area: ',currentPatch%area
-          currentCohort => currentPatch%shortest
-          do while(associated(currentCohort))
-             write(fates_log(),*) 'cohort pft/n/cached c_area: ', &
-                  currentCohort%pft,currentCohort%n,currentCohort%c_area
-             currentCohort => currentCohort%taller
-          end do
-       end if
+       ! if(currentPatch%area < rsnbl_math_prec*area_site) then
+       !    write(fates_log(),*) 'spawn_patches: tiny patch EXIT'
+       !    write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
+       !    write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+       !    write(fates_log(),*) 'patch area: ',currentPatch%area
+       !    currentCohort => currentPatch%shortest
+       !    do while(associated(currentCohort))
+       !       write(fates_log(),*) 'cohort pft/n/cached c_area: ', &
+       !            currentCohort%pft,currentCohort%n,currentCohort%c_area
+       !       currentCohort => currentCohort%taller
+       !    end do
+       ! end if
        ! END DEBUG 2STREAM-TINY-PATCH
        currentPatch => currentPatch%younger
     end do
@@ -1994,9 +1994,9 @@ contains
     type(fates_patch_type), intent(in) :: donor
 
     ! BEGIN DEBUG RESIDUAL-RETIREMENT
-    write(fates_log(),*) 'residual retirement DEFERRED: no resolved compatible receiver'
-    write(fates_log(),*) 'lat/lon, patchno: ',csite%lat,csite%lon,donor%patchno
-    write(fates_log(),*) 'landuse/nocomp pft, area: ',donor%land_use_label,donor%nocomp_pft_label,donor%area
+    ! write(fates_log(),*) 'residual retirement DEFERRED: no resolved compatible receiver'
+    ! write(fates_log(),*) 'lat/lon, patchno: ',csite%lat,csite%lon,donor%patchno
+    ! write(fates_log(),*) 'landuse/nocomp pft, area: ',donor%land_use_label,donor%nocomp_pft_label,donor%area
     ! END DEBUG RESIDUAL-RETIREMENT
   end subroutine log_retirement_deferral
 
@@ -2083,21 +2083,21 @@ contains
     enddo
 
     ! BEGIN DEBUG RESIDUAL-RETIREMENT
-    write(fates_log(),*) 'residual retirement: site-negligible, upper crown > twice residual area'
-    write(fates_log(),*) 'lat/lon: ',csite%lat,csite%lon
-    write(fates_log(),*) 'donor/receiver patchno: ',donor%patchno,receiver%patchno
-    write(fates_log(),*) 'landuse/nocomp pft: ',donor%land_use_label,donor%nocomp_pft_label
-    write(fates_log(),*) 'original/residual/receiver area: ',original_area,donor%area,receiver%area
-    write(fates_log(),*) 'surviving upper crown area/first pending disturbance: ',surviving_crown,first_pending
-    write(fates_log(),*) 'numerical retirement individuals: ',terminated_n
-    write(fates_log(),*) 'numerical retirement element ids: ',element_list(:)
-    write(fates_log(),*) 'numerical retirement element mass [kg]: ',terminated_mass(:)
-    if (crossing) then
-       write(fates_log(),'(A,2F10.4,4I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT CROSS-LABEL', &
-            csite%lat,csite%lon,donor_lu,donor_nocomp, &
-            receiver%land_use_label,receiver%nocomp_pft_label, &
-            donor%area,receiver%area,surviving_crown,terminated_n
-    endif
+    ! write(fates_log(),*) 'residual retirement: site-negligible, upper crown > twice residual area'
+    ! write(fates_log(),*) 'lat/lon: ',csite%lat,csite%lon
+    ! write(fates_log(),*) 'donor/receiver patchno: ',donor%patchno,receiver%patchno
+    ! write(fates_log(),*) 'landuse/nocomp pft: ',donor%land_use_label,donor%nocomp_pft_label
+    ! write(fates_log(),*) 'original/residual/receiver area: ',original_area,donor%area,receiver%area
+    ! write(fates_log(),*) 'surviving upper crown area/first pending disturbance: ',surviving_crown,first_pending
+    ! write(fates_log(),*) 'numerical retirement individuals: ',terminated_n
+    ! write(fates_log(),*) 'numerical retirement element ids: ',element_list(:)
+    ! write(fates_log(),*) 'numerical retirement element mass [kg]: ',terminated_mass(:)
+    ! if (crossing) then
+    !    write(fates_log(),'(A,2F10.4,4I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT CROSS-LABEL', &
+    !         csite%lat,csite%lon,donor_lu,donor_nocomp, &
+    !         receiver%land_use_label,receiver%nocomp_pft_label, &
+    !         donor%area,receiver%area,surviving_crown,terminated_n
+    ! endif
     ! END DEBUG RESIDUAL-RETIREMENT
 
     if (crossing) then
@@ -2160,9 +2160,9 @@ contains
     cpatch%total_tree_area = 0._r8
 
     ! BEGIN DEBUG RESIDUAL-RETIREMENT
-    write(fates_log(),'(A,2F10.4,2I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT EMPTY-IN-PLACE', &
-         csite%lat,csite%lon,cpatch%land_use_label,cpatch%nocomp_pft_label, &
-         cpatch%area,surviving_crown,terminated_n,terminated_mass
+    ! write(fates_log(),'(A,2F10.4,2I5,*(1X,ES11.4))') 'RESIDUAL-RETIREMENT EMPTY-IN-PLACE', &
+    !      csite%lat,csite%lon,cpatch%land_use_label,cpatch%nocomp_pft_label, &
+    !      cpatch%area,surviving_crown,terminated_n,terminated_mass
     ! END DEBUG RESIDUAL-RETIREMENT
   end subroutine empty_orphan_in_place
 
@@ -2199,16 +2199,16 @@ contains
 
     ! BEGIN DEBUG 2STREAM-TINY-PATCH
     log_small_split = min(temp_area,currentPatch%area-temp_area) < rsnbl_math_prec*area_site
-    if(log_small_split) then
-       write(fates_log(),*) 'split_patch: tiny split BEFORE'
-       write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' donor patchno: ',currentPatch%patchno
-       write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
-       write(fates_log(),*) 'donor area: ',currentPatch%area,' removed area: ',temp_area
-       write(fates_log(),*) 'fraction_to_keep: ',fraction_to_keep,' complement: ',1._r8-fraction_to_keep
-       if(currentPatch%area > 0._r8) then
-          write(fates_log(),*) 'removed area fraction: ',temp_area/currentPatch%area
-       end if
-    end if
+    ! if(log_small_split) then
+    !    write(fates_log(),*) 'split_patch: tiny split BEFORE'
+    !    write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' donor patchno: ',currentPatch%patchno
+    !    write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+    !    write(fates_log(),*) 'donor area: ',currentPatch%area,' removed area: ',temp_area
+    !    write(fates_log(),*) 'fraction_to_keep: ',fraction_to_keep,' complement: ',1._r8-fraction_to_keep
+    !    if(currentPatch%area > 0._r8) then
+    !       write(fates_log(),*) 'removed area fraction: ',temp_area/currentPatch%area
+    !    end if
+    ! end if
     ! END DEBUG 2STREAM-TINY-PATCH
 
     ! first we need to make the new patch
@@ -2263,10 +2263,10 @@ contains
        call currentCohort%Copy(nc)
 
        ! BEGIN DEBUG 2STREAM-TINY-PATCH
-             if(log_small_split) then
-           write(fates_log(),*) 'split_patch: cohort BEFORE pft/n/c_area: ', &
-                currentCohort%pft,currentCohort%n,currentCohort%c_area
-             end if
+           !   if(log_small_split) then
+           ! write(fates_log(),*) 'split_patch: cohort BEFORE pft/n/c_area: ', &
+           !      currentCohort%pft,currentCohort%n,currentCohort%c_area
+           !   end if
        ! END DEBUG 2STREAM-TINY-PATCH
 
        ! Number of members in the new patch
@@ -2276,10 +2276,10 @@ contains
        currentCohort%n = currentCohort%n * fraction_to_keep
 
        ! BEGIN DEBUG 2STREAM-TINY-PATCH
-       if(log_small_split) then
-          write(fates_log(),*) 'split_patch: cohort AFTER donor/receiver n: ',currentCohort%n,nc%n
-          write(fates_log(),*) 'split_patch: donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
-       end if
+       ! if(log_small_split) then
+       !    write(fates_log(),*) 'split_patch: cohort AFTER donor/receiver n: ',currentCohort%n,nc%n
+       !    write(fates_log(),*) 'split_patch: donor/receiver cached c_area: ',currentCohort%c_area,nc%c_area
+       ! end if
        ! END DEBUG 2STREAM-TINY-PATCH
 
        call new_patch%InsertCohort(nc)
@@ -2295,9 +2295,9 @@ contains
     currentPatch%area = currentPatch%area - temp_area
 
     ! BEGIN DEBUG 2STREAM-TINY-PATCH
-    if(log_small_split) then
-       write(fates_log(),*) 'split_patch: tiny split AFTER donor/receiver area: ',currentPatch%area,new_patch%area
-    end if
+    ! if(log_small_split) then
+    !    write(fates_log(),*) 'split_patch: tiny split AFTER donor/receiver area: ',currentPatch%area,new_patch%area
+    ! end if
     ! END DEBUG 2STREAM-TINY-PATCH
 
   end subroutine split_patch
@@ -4131,18 +4131,18 @@ contains
           else
              write(fates_log(),*) 'this isnt because the land use was less than allowed'
              ! BEGIN DEBUG 2STREAM-TINY-PATCH
-             write(fates_log(),*) 'terminate_patches: unresolved tiny patch RETAINED'
-             write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
-             write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
-             write(fates_log(),*) 'area/min_patch_area/min_patch_area_forced: ', &
-                  currentPatch%area,min_patch_area,min_patch_area_forced
-             write(fates_log(),*) 'total_canopy_area (cached): ',currentPatch%total_canopy_area
-             diagnostic_cohort => currentPatch%shortest
-             do while(associated(diagnostic_cohort))
-                write(fates_log(),*) 'cohort pft/layer/n/cached c_area: ',diagnostic_cohort%pft, &
-                     diagnostic_cohort%canopy_layer,diagnostic_cohort%n,diagnostic_cohort%c_area
-                diagnostic_cohort => diagnostic_cohort%taller
-             end do
+             ! write(fates_log(),*) 'terminate_patches: unresolved tiny patch RETAINED'
+             ! write(fates_log(),*) 'lat/lon: ',currentSite%lat,currentSite%lon,' patchno: ',currentPatch%patchno
+             ! write(fates_log(),*) 'landuse/nocomp pft: ',currentPatch%land_use_label,currentPatch%nocomp_pft_label
+             ! write(fates_log(),*) 'area/min_patch_area/min_patch_area_forced: ', &
+             !      currentPatch%area,min_patch_area,min_patch_area_forced
+             ! write(fates_log(),*) 'total_canopy_area (cached): ',currentPatch%total_canopy_area
+             ! diagnostic_cohort => currentPatch%shortest
+             ! do while(associated(diagnostic_cohort))
+             !    write(fates_log(),*) 'cohort pft/layer/n/cached c_area: ',diagnostic_cohort%pft, &
+             !         diagnostic_cohort%canopy_layer,diagnostic_cohort%n,diagnostic_cohort%c_area
+             !    diagnostic_cohort => diagnostic_cohort%taller
+             ! end do
              ! END DEBUG 2STREAM-TINY-PATCH
 
              !call endrun(msg=errMsg(sourcefile, __LINE__))
