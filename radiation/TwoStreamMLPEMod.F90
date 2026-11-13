@@ -1731,7 +1731,10 @@ contains
        write(log_unit,*)"ib: ",ib
        write(log_unit,*)"scattering coeff: ",(2*rad_params%om_leaf(ib,1)+0.5*rad_params%om_stem(ib,1))/2.5
        write(log_unit,*)"Breakdown:",this%n_lyr
+       write(log_unit,*)"n_col: ",this%n_col(1:this%n_lyr)," n_scel: ",this%n_scel
+       write(log_unit,*)"sum(n_col): ",sum(this%n_col(1:this%n_lyr))
        do ican = 1,this%n_lyr
+          write(log_unit,*)"layer: ",ican," area sum: ",sum(this%scelg(ican,1:this%n_col(ican))%area)
           do icol = 1,this%n_col(ican)
              scelgp => this%scelg(ican,icol)
              scelbp => this%band(ib)%scelb(ican,icol)

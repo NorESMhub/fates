@@ -2093,6 +2093,11 @@ contains
                if (fates_global_verbose()) then
                   write(fates_log(),*) 'Transfering hlm_use_potentialveg = ',ival,' to FATES'
                end if
+            case('use_fates_ptfix')
+               hlm_use_ptfix = ival
+               if (fates_global_verbose()) then
+                  write(fates_log(),*) 'Transfering hlm_use_ptfix = ',ival,' to FATES'
+               end if
 
             case('num_luh2_states')
                hlm_num_luh2_states = ival
